@@ -1,17 +1,47 @@
 #include <SFML/Graphics.hpp>
 #include <complex>
 #include <functional>
+#include <cstdint>
 
-using FractalFun = std::function<int(std::complex<double>, int)>;
+using FractalFun = std::function<double(std::complex<double>, int)>;
 
-int mandelbrot(std::complex<double> c, int maxIter) {
+double mandelbrot(std::complex<double> c, int maxIter) {
     std::complex<double> z = 0;
     int n = 0;
     while (std::abs(z) <= 2 && n < maxIter) {
         z = z * z + c;
         ++n;
     }
-    return n;
+    if (n == maxIter) return n;
+    double smooth = n + 1 - std::log(std::log(std::abs(z))) / std::log(2.0);
+    return smooth;
+}
+
+// Convert HSV color to RGB (all in [0,1] except h in [0,360])
+sf::Color hsvToRgb(double h, double s, double v) {
+    double c = v * s;
+    double x = c * (1 - std::fabs(fmod(h / 60.0, 2) - 1));
+    double m = v - c;
+    double r, g, b;
+    if (h < 60)      { r = c; g = x; b = 0; }
+    else if (h < 120) { r = x; g = c; b = 0; }
+    else if (h < 180) { r = 0; g = c; b = x; }
+    else if (h < 240) { r = 0; g = x; b = c; }
+    else if (h < 300) { r = x; g = 0; b = c; }
+    else              { r = c; g = 0; b = x; }
+    uint8_t R = static_cast<uint8_t>(255 * (r + m));
+    uint8_t G = static_cast<uint8_t>(255 * (g + m));
+    uint8_t B = static_cast<uint8_t>(255 * (b + m));
+    return sf::Color(R, G, B);
+}
+
+sf::Color mapColorLogScale(double n, int maxIter) {
+    if (n >= maxIter) return sf::Color::Black;
+    double v = std::log(1.0 + n) / std::log(1.0 + maxIter); // [0,1]
+    double hue = 120.0 * v;
+    double sat = 0.8;
+    double val = 1.0;
+    return hsvToRgb(hue, sat, val);
 }
 
 void renderFractal(sf::Image& image, FractalFun fractalFunc,
@@ -20,19 +50,29 @@ void renderFractal(sf::Image& image, FractalFun fractalFunc,
     unsigned width = size.x;
     unsigned height = size.y;
 
+    // compute smooth values and find min/max
+    std::vector<std::vector<double>> smoothVals(width, std::vector<double>(height));
+    double minVal = std::numeric_limits<double>::max();
+    double maxVal = std::numeric_limits<double>::lowest();
     for (unsigned x = 0; x < width; ++x) {
         for (unsigned y = 0; y < height; ++y) {
             double real = (x - width / 2.0) * (4.0 / width) / zoom + offsetX;
             double imag = (y - height / 2.0) * (4.0 / height) / zoom + offsetY;
             std::complex<double> c(real, imag);
-            int n = fractalFunc(c, maxIter);
+            double n = fractalFunc(c, maxIter);
+            smoothVals[x][y] = n;
+            if (n < minVal) minVal = n;
+            if (n > maxVal) maxVal = n;
+        }
+    }
 
-            sf::Color color =
-                (n == maxIter)
-                    ? sf::Color::Black
-                    : sf::Color(255 - (n * 255 / maxIter), 0, n * 255 / maxIter);
-
-            image.setPixel({x, y}, color);  // ✅ correct SFML 3 call
+    // map normalized values to color 
+    for (unsigned x = 0; x < width; ++x) {
+        for (unsigned y = 0; y < height; ++y) {
+            double n = smoothVals[x][y];
+            double v = (maxVal > minVal) ? (n - minVal) / (maxVal - minVal) : 0.0;
+            sf::Color color = (n >= maxIter) ? sf::Color::Black : mapColorLogScale(v * maxIter, maxIter);
+            image.setPixel({x, y}, color);
         }
     }
 }
