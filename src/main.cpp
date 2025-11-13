@@ -4,21 +4,38 @@
 #include <iostream>
 #include <chrono>
 #include <vector>
+#include <cmath>
 
 #include <SFML/Graphics.hpp>
 
-using FractalFun = std::function<double(std::complex<double>, int)>;
+// Complex z = new Complex(x,y);
+// double smoothcolor = Math.exp(-z.abs());
 
-double mandelbrot(std::complex<double> c, int maxIter) {
+// for(i=0;i<max_iter && z.abs() < 30;i++) {
+//     z = f(z);
+//     smoothcolor += Math.exp(-z.abs());
+// }
+
+using FractalFun = std::function<std::pair<int, std::complex<double>>(std::complex<double>, int)>;
+
+double mapValue(int n, std::complex<double> zVal, int maxIter) {
+    if (n >= maxIter) return 1.0; // Inside set, use black
+    // double smoothed = n + 1 - std::log(std::log(std::abs(zVal))) / std::log(2);
+    double smoothed = maxIter - std::log2(1/std::log(std::abs(zVal)));
+    double normalized = smoothed / static_cast<double>(maxIter);
+    if (std::isnan(normalized) || normalized < 0.0) normalized = 0.0;
+    if (normalized > 1.0) normalized = 1.0;
+    return normalized;
+}
+
+std::pair<int, std::complex<double>> mandelbrot(std::complex<double> c, int maxIter) {
     std::complex<double> z = 0;
     int n = 0;
     while (std::abs(z) <= 2 && n < maxIter) {
         z = z * z + c;
         ++n;
     }
-    if (n == maxIter) return n;
-    double smooth = n + 1 - std::log(std::log(std::abs(z))) / std::log(2.0);
-    return smooth;
+    return {n, z};
 }
 
 // Convert HSV color to RGB (all in [0,1] except h in [0,360])
@@ -39,9 +56,8 @@ sf::Color hsvToRgb(double h, double s, double v) {
     return sf::Color(R, G, B);
 }
 
-sf::Color mapColorLogScale(double n, int maxIter) {
-    if (n >= maxIter) return sf::Color::Black;
-    double v = std::log(1.0 + n) / std::log(1.0 + maxIter); // [0,1]
+sf::Color mapColorLogScale(double v, int maxIter) {
+    if (v >= 1.0) return sf::Color::Black;
     double hue = 120.0 * v;
     double sat = 0.8;
     double val = 1.0;
@@ -56,26 +72,14 @@ void renderFractal(sf::Image& image, FractalFun fractalFunc,
 
     // compute smooth values and find min/max
     std::vector<std::vector<double>> smoothVals(width, std::vector<double>(height));
-    double minVal = std::numeric_limits<double>::max();
-    double maxVal = std::numeric_limits<double>::lowest();
     for (unsigned x = 0; x < width; ++x) {
         for (unsigned y = 0; y < height; ++y) {
             double real = (x - width / 2.0) * (4.0 / width) / zoom + offsetX;
             double imag = (y - height / 2.0) * (4.0 / height) / zoom + offsetY;
             std::complex<double> c(real, imag);
-            double n = fractalFunc(c, maxIter);
-            smoothVals[x][y] = n;
-            if (n < minVal) minVal = n;
-            if (n > maxVal) maxVal = n;
-        }
-    }
-
-    // map normalized values to color 
-    for (unsigned x = 0; x < width; ++x) {
-        for (unsigned y = 0; y < height; ++y) {
-            double n = smoothVals[x][y];
-            double v = (maxVal > minVal) ? (n - minVal) / (maxVal - minVal) : 0.0;
-            sf::Color color = (n >= maxIter) ? sf::Color::Black : mapColorLogScale(v * maxIter, maxIter);
+            auto [iter, zVal] = fractalFunc(c, maxIter);
+            double value = mapValue(iter, zVal, maxIter);
+            sf::Color color = mapColorLogScale(value, maxIter);
             image.setPixel({x, y}, color);
         }
     }
@@ -92,7 +96,7 @@ void timeFunction(std::function<void()> func) {
 int main() {
     const unsigned width = 800;
     const unsigned height = 600;
-    const int maxIter = 1000;
+    const int maxIter = 100;
     double zoom = 1.0;
     double offsetX = -0.5;
     double offsetY = 0.0;
@@ -126,6 +130,20 @@ int main() {
                 offsetX = mx - (mouse.x - width / 2.0) * (4.0 / width) / zoom;
                 offsetY = my - (mouse.y - height / 2.0) * (4.0 / height) / zoom;
                 needsUpdate = true;
+            }
+            // Keyboard zoom: 'j' to zoom in, 'k' to zoom out at mouse position
+            if (auto* e = event->getIf<sf::Event::KeyPressed>()) {
+                if (e->code == sf::Keyboard::Key::J || e->code == sf::Keyboard::Key::K) {
+                    double oldZoom = zoom;
+                    if (e->code == sf::Keyboard::Key::J) zoom *= 1.5;
+                    else if (e->code == sf::Keyboard::Key::K) zoom /= 1.5;
+                    sf::Vector2i mouse = sf::Mouse::getPosition(window);
+                    double mx = (mouse.x - width / 2.0) * (4.0 / width) / oldZoom + offsetX;
+                    double my = (mouse.y - height / 2.0) * (4.0 / height) / oldZoom + offsetY;
+                    offsetX = mx - (mouse.x - width / 2.0) * (4.0 / width) / zoom;
+                    offsetY = my - (mouse.y - height / 2.0) * (4.0 / height) / zoom;
+                    needsUpdate = true;
+                }
             }
             if (auto* e = event->getIf<sf::Event::MouseButtonPressed>()) {
                 if (e->button == sf::Mouse::Button::Left) {
