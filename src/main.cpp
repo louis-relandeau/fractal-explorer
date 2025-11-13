@@ -1,7 +1,11 @@
-#include <SFML/Graphics.hpp>
 #include <complex>
 #include <functional>
 #include <cstdint>
+#include <iostream>
+#include <chrono>
+#include <vector>
+
+#include <SFML/Graphics.hpp>
 
 using FractalFun = std::function<double(std::complex<double>, int)>;
 
@@ -77,6 +81,14 @@ void renderFractal(sf::Image& image, FractalFun fractalFunc,
     }
 }
 
+void timeFunction(std::function<void()> func) {
+    auto start = std::chrono::high_resolution_clock::now();
+    func();
+    auto end = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> elapsed = end - start;
+    std::cout << "Elapsed time: " << elapsed.count() << " seconds\n";
+}
+
 int main() {
     const unsigned width = 800;
     const unsigned height = 600;
@@ -88,7 +100,9 @@ int main() {
     sf::RenderWindow window(sf::VideoMode({width, height}), "Mandelbrot Set");
 
     sf::Image image({width, height});
-    renderFractal(image, mandelbrot, maxIter, zoom, offsetX, offsetY);
+    timeFunction([&]() {
+        renderFractal(image, mandelbrot, maxIter, zoom, offsetX, offsetY);
+    });
 
     sf::Texture texture(image);
     sf::Sprite sprite(texture);
@@ -136,7 +150,9 @@ int main() {
         }
 
         if (needsUpdate) {
-            renderFractal(image, mandelbrot, maxIter, zoom, offsetX, offsetY);
+            timeFunction([&]() {
+                renderFractal(image, mandelbrot, maxIter, zoom, offsetX, offsetY);
+            });
             if (texture.loadFromImage(image)) {
                 sprite.setTexture(texture);
             }
