@@ -5,5 +5,5 @@
 * compute more detailed where required, otherwise interpolate
 
 # Perf
-
-- 2.4 s: default compute everytime, maxIter 1000
+Always 1000 iter
+- 2.4 s: default compute everything everytime

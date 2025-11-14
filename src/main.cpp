@@ -47,35 +47,70 @@ sf::Color mapColorLogScale(double n) {
     return hsvToRgb(hue, sat, val);
 }
 
+// Optimized renderFractal: only recompute changed areas if dx/dy provided
 void renderFractal(sf::Image& image, FractalFun fractalFunc,
-                   int maxIter, double zoom, double offsetX, double offsetY) {
+                   int maxIter, double zoom, double offsetX, double offsetY,
+                   const std::vector<std::vector<double>>* prevSmoothVals,
+                   const sf::Image* prevImage = nullptr, int dx = 0, int dy = 0) {
     auto size = image.getSize();
     unsigned width = size.x;
     unsigned height = size.y;
 
-    // compute smooth values and find min/max
     std::vector<std::vector<double>> smoothVals(width, std::vector<double>(height));
     double minVal = std::numeric_limits<double>::max();
     double maxVal = std::numeric_limits<double>::lowest();
-    for (unsigned x = 0; x < width; ++x) {
-        for (unsigned y = 0; y < height; ++y) {
-            double real = (x - width / 2.0) * (4.0 / width) / zoom + offsetX;
-            double imag = (y - height / 2.0) * (4.0 / height) / zoom + offsetY;
-            std::complex<double> c(real, imag);
-            double n = fractalFunc(c, maxIter);
-            smoothVals[x][y] = n;
-            if (n < minVal) minVal = n;
-            if (n > maxVal) maxVal = n;
+
+    // Copy unchanged pixels from previous image if dragging
+    if (prevImage && (dx != 0 || dy != 0)) {
+    // if (false) {
+        std::cout << "Partial recompute with dx=" << dx << " dy=" << dy << "\n";
+        for (unsigned x = 0; x < width; ++x) {
+            for (unsigned y = 0; y < height; ++y) {
+                int px = x + dx;
+                int py = y + dy;
+                if (px >= 0 && px < (int)width && py >= 0 && py < (int)height) {
+                    image.setPixel({x, y}, prevImage->getPixel({px, py}));
+                    smoothVals[x][y] = (*prevSmoothVals)[px][py];
+                    if (smoothVals[x][y] < minVal) minVal = smoothVals[x][y];
+                    if (smoothVals[x][y] > maxVal) maxVal = smoothVals[x][y];
+                    continue;
+                }
+                // Recompute only if not copied
+                double real = (x - width / 2.0) * (4.0 / width) / zoom + offsetX;
+                double imag = (y - height / 2.0) * (4.0 / height) / zoom + offsetY;
+                std::complex<double> c(real, imag);
+                double n = fractalFunc(c, maxIter);
+                smoothVals[x][y] = n;
+                if (n < minVal) minVal = n;
+                if (n > maxVal) maxVal = n;
+            }
+        }
+    } else {
+        // Full recompute
+        for (unsigned x = 0; x < width; ++x) {
+            for (unsigned y = 0; y < height; ++y) {
+                double real = (x - width / 2.0) * (4.0 / width) / zoom + offsetX;
+                double imag = (y - height / 2.0) * (4.0 / height) / zoom + offsetY;
+                std::complex<double> c(real, imag);
+                double n = fractalFunc(c, maxIter);
+                smoothVals[x][y] = n;
+                if (n < minVal) minVal = n;
+                if (n > maxVal) maxVal = n;
+            }
         }
     }
 
-    // map normalized values to color 
+    *const_cast<std::vector<std::vector<double>>*>(prevSmoothVals) = smoothVals;
+
+    // map normalized values to color for recomputed pixels
     for (unsigned x = 0; x < width; ++x) {
         for (unsigned y = 0; y < height; ++y) {
-            double n = smoothVals[x][y];
-            double v = (maxVal > minVal) ? (n - minVal) / (maxVal - minVal) : 0.0;
-            sf::Color color = (n >= maxIter) ? sf::Color::Black : mapColorLogScale(v);
-            image.setPixel({x, y}, color);
+            if (smoothVals[x][y] != 0.0 || !prevImage || (dx == 0 && dy == 0)) {
+                double n = smoothVals[x][y];
+                double v = (maxVal > minVal) ? (n - minVal) / (maxVal - minVal) : 0.0;
+                sf::Color color = (n >= maxIter) ? sf::Color::Black : mapColorLogScale(v);
+                image.setPixel({x, y}, color);
+            }
         }
     }
 }
@@ -99,8 +134,10 @@ int main() {
     sf::RenderWindow window(sf::VideoMode({width, height}), "Mandelbrot Set");
 
     sf::Image image({width, height});
+    sf::Image prevImage;
+    std::vector<std::vector<double>> prevSmoothVals(width, std::vector<double>(height, 0.0));
     timeFunction([&]() {
-        renderFractal(image, mandelbrot, maxIter, zoom, offsetX, offsetY);
+        renderFractal(image, mandelbrot, maxIter, zoom, offsetX, offsetY, &prevSmoothVals);
     });
 
     sf::Texture texture(image);
@@ -109,7 +146,8 @@ int main() {
     bool needsUpdate = false;
     bool dragging = false;
     sf::Vector2i lastMousePos;
-
+    int totalDragDx = 0, totalDragDy = 0;
+    
     while (window.isOpen()) {
         while (auto event = window.pollEvent()) {
             if (event->is<sf::Event::Closed>()) {
@@ -158,18 +196,27 @@ int main() {
                 offsetX -= dx * (4.0 / width) / zoom;
                 offsetY -= dy * (4.0 / height) / zoom;
                 lastMousePos = mouse;
+                totalDragDx += dx;
+                totalDragDy += dy;
                 needsUpdate = true;
             }
         }
 
         if (needsUpdate) {
+            std::cout << "Updating fractal...\n";
+            prevImage = image;
             timeFunction([&]() {
-                renderFractal(image, mandelbrot, maxIter, zoom, offsetX, offsetY);
+                if ((totalDragDx != 0 || totalDragDy != 0) && dragging) {
+                    renderFractal(image, mandelbrot, maxIter, zoom, offsetX, offsetY, &prevSmoothVals, &prevImage, -totalDragDx, -totalDragDy);
+                } else {
+                    renderFractal(image, mandelbrot, maxIter, zoom, offsetX, offsetY, &prevSmoothVals);
+                }
             });
             if (texture.loadFromImage(image)) {
                 sprite.setTexture(texture);
             }
             needsUpdate = false;
+            totalDragDx = 0; totalDragDy = 0;
         }
 
         window.clear();
