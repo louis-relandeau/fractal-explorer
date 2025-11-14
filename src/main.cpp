@@ -39,12 +39,11 @@ sf::Color hsvToRgb(double h, double s, double v) {
     return sf::Color(R, G, B);
 }
 
-sf::Color mapColorLogScale(double n, int maxIter) {
-    if (n >= maxIter) return sf::Color::Black;
-    double v = std::log(1.0 + n) / std::log(1.0 + maxIter); // [0,1]
-    double hue = 120.0 * v;
+sf::Color mapColorLogScale(double n) {
+    if (n >= 1.0) return sf::Color::Black;
+    double hue = 360.0 * n;
     double sat = 0.8;
-    double val = 1.0;
+    double val = 1.0 - n * 0.8;
     return hsvToRgb(hue, sat, val);
 }
 
@@ -75,7 +74,7 @@ void renderFractal(sf::Image& image, FractalFun fractalFunc,
         for (unsigned y = 0; y < height; ++y) {
             double n = smoothVals[x][y];
             double v = (maxVal > minVal) ? (n - minVal) / (maxVal - minVal) : 0.0;
-            sf::Color color = (n >= maxIter) ? sf::Color::Black : mapColorLogScale(v * maxIter, maxIter);
+            sf::Color color = (n >= maxIter) ? sf::Color::Black : mapColorLogScale(v);
             image.setPixel({x, y}, color);
         }
     }
@@ -92,7 +91,7 @@ void timeFunction(std::function<void()> func) {
 int main() {
     const unsigned width = 800;
     const unsigned height = 600;
-    const int maxIter = 1000;
+    const int maxIter = 100;
     double zoom = 1.0;
     double offsetX = -0.5;
     double offsetY = 0.0;
@@ -126,6 +125,20 @@ int main() {
                 offsetX = mx - (mouse.x - width / 2.0) * (4.0 / width) / zoom;
                 offsetY = my - (mouse.y - height / 2.0) * (4.0 / height) / zoom;
                 needsUpdate = true;
+            }
+            if (auto* e = event->getIf<sf::Event::KeyPressed>()) {
+                if (e->code == sf::Keyboard::Key::J || e->code == sf::Keyboard::Key::K) {
+                    double oldZoom = zoom;
+                    double factor = 1.5;
+                    if (e->code == sf::Keyboard::Key::J) zoom /= factor;
+                    else if (e->code == sf::Keyboard::Key::K) zoom *= factor;
+                    sf::Vector2i mouse = sf::Mouse::getPosition(window);
+                    double mx = (mouse.x - width / 2.0) * (4.0 / width) / oldZoom + offsetX;
+                    double my = (mouse.y - height / 2.0) * (4.0 / height) / oldZoom + offsetY;
+                    offsetX = mx - (mouse.x - width / 2.0) * (4.0 / width) / zoom;
+                    offsetY = my - (mouse.y - height / 2.0) * (4.0 / height) / zoom;
+                    needsUpdate = true;
+                }
             }
             if (auto* e = event->getIf<sf::Event::MouseButtonPressed>()) {
                 if (e->button == sf::Mouse::Button::Left) {
