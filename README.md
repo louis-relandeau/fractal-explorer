@@ -7,3 +7,4 @@
 # Perf
 Always 1000 iter
 - 2.4 s: default compute everything everytime
+- 4.2 s: added distance estimate, yikes
