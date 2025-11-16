@@ -1,13 +1,12 @@
-// combined_fast_mandelbrot.cpp
-// g++ -O3 combined_fast_mandelbrot.cpp -o mandelbrot -lsfml-graphics -lsfml-window -lsfml-system
-
-#include <SFML/Graphics.hpp>
 #include <vector>
 #include <cmath>
 #include <limits>
 #include <chrono>
 #include <iostream>
 #include <cstdint>
+
+#include <SFML/Graphics.hpp>
+#include <yaml-cpp/yaml.h>
 
 using std::size_t;
 
@@ -17,11 +16,11 @@ struct DERes {
     int iter;
 };
 
-static constexpr int    MAX_HORIZONTAL_SKIP_PIXELS  = 64;
-static constexpr double EARLY_EXIT_MULTIPLIER       = 4.0;
-static constexpr double SAFETY_FACTOR               = 0.9;
-static constexpr double DETAIL_MULTIPLIER           = 1.5;
-static constexpr double DZ_GUARD                    = 1e-300;
+int MAX_HORIZONTAL_SKIP_PIXELS;
+double EARLY_EXIT_MULTIPLIER;
+double SAFETY_FACTOR;
+double DETAIL_MULTIPLIER;
+double DZ_GUARD;
 
 inline DERes mandelbrot_de_scalar(double cr, double ci, int maxIter, double pixelSize) {
     double zr = 0.0, zi = 0.0;
@@ -267,12 +266,25 @@ void timeFunction(F f) {
 }
 
 int main() {
-    const unsigned width = 800;
-    const unsigned height = 600;
-    const int maxIter = 100;
-    double zoom = 1.0;
-    double offsetX = -0.5;
-    double offsetY = 0.0;
+
+    // load parameters from YAML file
+    YAML::Node config = YAML::LoadFile("params.yaml");
+    const auto renderNode = config["Render"];
+    MAX_HORIZONTAL_SKIP_PIXELS = renderNode["MaxHorizontalSkipPixels"].as<int>();
+    EARLY_EXIT_MULTIPLIER = renderNode["EarlyExitMultiplier"].as<double>();
+    SAFETY_FACTOR = renderNode["SafetyFactor"].as<double>();
+    DETAIL_MULTIPLIER = renderNode["DetailMultiplier"].as<double>();
+    DZ_GUARD = renderNode["DZGuard"].as<double>();
+
+    const auto windowNode = config["Window"];
+    const unsigned width = windowNode["Width"].as<unsigned>();
+    const unsigned height = windowNode["Height"].as<unsigned>();
+
+    const auto fractalNode = config["Fractal"];
+    const int maxIter = fractalNode["MaxIterations"].as<int>();
+    double zoom = fractalNode["InitialZoom"].as<double>();
+    double offsetX = fractalNode["InitialOffsetX"].as<double>();
+    double offsetY = fractalNode["InitialOffsetY"].as<double>();
 
     sf::RenderWindow window(sf::VideoMode({width, height}), "Mandelbrot Combined Renderer");
     window.setFramerateLimit(60);
