@@ -1,43 +1,57 @@
-#include <complex>
-#include <functional>
-#include <cstdint>
-#include <iostream>
-#include <chrono>
+// combined_fast_mandelbrot.cpp
+// g++ -O3 combined_fast_mandelbrot.cpp -o mandelbrot -lsfml-graphics -lsfml-window -lsfml-system
+
+#include <SFML/Graphics.hpp>
 #include <vector>
 #include <cmath>
 #include <limits>
+#include <chrono>
+#include <iostream>
+#include <cstdint>
 
-#include <SFML/Graphics.hpp>
+using std::size_t;
 
-using namespace std;
-
-struct DEResult {
+struct DERes {
     double smooth;
     double dist;
     int iter;
 };
 
-int const MAX_HORIZONTAL_SKIP = 128;
-double const EARLY_EXIT_MULTIPLIER = 4.0;
-double const SAFETY_FACTOR = 0.9;
-double const DETAIL_MULTIPLIER = 1.5;
+static constexpr int    MAX_HORIZONTAL_SKIP_PIXELS  = 64;
+static constexpr double EARLY_EXIT_MULTIPLIER       = 4.0;
+static constexpr double SAFETY_FACTOR               = 0.9;
+static constexpr double DETAIL_MULTIPLIER           = 1.5;
+static constexpr double DZ_GUARD                    = 1e-300;
 
-DEResult mandelbrotDE(std::complex<double> c, int maxIter, double pixelSize) {
-    std::complex<double> z = 0.0;
-    std::complex<double> dz = 0.0;
+inline DERes mandelbrot_de_scalar(double cr, double ci, int maxIter, double pixelSize) {
+    double zr = 0.0, zi = 0.0;
+    double dzr = 0.0, dzi = 0.0;
     int n = 0;
     double dist = pixelSize;
 
     while (n < maxIter) {
-        dz = 2.0 * z * dz + 1.0;
-        z  = z*z + c;
+        // dz = 2*z*dz + 1
+        double two_z_dzr = 2.0 * (zr * dzr - zi * dzi);
+        double two_z_dzi = 2.0 * (zr * dzi + zi * dzr);
+        dzr = two_z_dzr + 1.0;
+        dzi = two_z_dzi;
+
+        // z = z*z + c
+        double zr2 = zr*zr - zi*zi + cr;
+        double zi2 = 2.0*zr*zi + ci;
+        zr = zr2; zi = zi2;
+
         ++n;
 
-        double r = std::abs(z);
-        if (r > 2.0) {
-            double dd = std::abs(dz);
-            if (dd < 1e-300) dd = 1e-300;
-            dist = 2.0 * r * std::log(r) / dd;
+        double r2 = zr*zr + zi*zi;
+        if (r2 > 4.0) {
+            // |z| and |dz|
+            double r = std::sqrt(r2);
+            double dd = std::sqrt(dzr*dzr + dzi*dzi);
+            if (dd < DZ_GUARD) dd = DZ_GUARD;
+            // dist = 2 * |z| * ln|z| / |dz|
+            double lnz = std::log(r);
+            dist = 2.0 * r * lnz / dd;
             if (dist > pixelSize * EARLY_EXIT_MULTIPLIER) {
                 break;
             }
@@ -47,7 +61,7 @@ DEResult mandelbrotDE(std::complex<double> c, int maxIter, double pixelSize) {
 
     double smooth = double(n);
     if (n < maxIter) {
-        double absz = std::abs(z);
+        double absz = std::sqrt(zr*zr + zi*zi);
         if (absz < 1e-300) absz = 1e-300;
         smooth = n + 1.0 - std::log(std::log(absz)) / std::log(2.0);
     }
@@ -57,19 +71,19 @@ DEResult mandelbrotDE(std::complex<double> c, int maxIter, double pixelSize) {
 
 sf::Color hsvToRgb(double h, double s, double v) {
     double c = v * s;
-    double x = c * (1 - std::fabs(fmod(h / 60.0, 2.0) - 1.0));
+    double x = c * (1.0 - std::fabs(std::fmod(h / 60.0, 2.0) - 1.0));
     double m = v - c;
-    double r, g, b;
+    double r,g,b;
     if (h < 60.0)      { r = c; g = x; b = 0; }
-    else if (h < 120.0) { r = x; g = c; b = 0; }
-    else if (h < 180.0) { r = 0; g = c; b = x; }
-    else if (h < 240.0) { r = 0; g = x; b = c; }
-    else if (h < 300.0) { r = x; g = 0; b = c; }
-    else                { r = c; g = 0; b = x; }
-    uint8_t R = static_cast<uint8_t>(255.0 * (r + m));
-    uint8_t G = static_cast<uint8_t>(255.0 * (g + m));
-    uint8_t B = static_cast<uint8_t>(255.0 * (b + m));
-    return sf::Color(R, G, B);
+    else if (h < 120.0){ r = x; g = c; b = 0; }
+    else if (h < 180.0){ r = 0; g = c; b = x; }
+    else if (h < 240.0){ r = 0; g = x; b = c; }
+    else if (h < 300.0){ r = x; g = 0; b = c; }
+    else               { r = c; g = 0; b = x; }
+    uint8_t R = uint8_t(std::round(255.0*(r+m)));
+    uint8_t G = uint8_t(std::round(255.0*(g+m)));
+    uint8_t B = uint8_t(std::round(255.0*(b+m)));
+    return sf::Color(R,G,B);
 }
 
 sf::Color mapColorLogScale(double n) {
@@ -80,45 +94,56 @@ sf::Color mapColorLogScale(double n) {
     return hsvToRgb(hue, sat, val);
 }
 
-void renderFractalCombined(
-    sf::Image& image,
+inline size_t idx(unsigned x, unsigned y, unsigned width) { return size_t(y) * size_t(width) + size_t(x); }
+
+void render_combined_fast(
+    sf::Image &image,
     int maxIter,
     double zoom,
     double offsetX,
     double offsetY,
-    std::vector<std::vector<double>>& prevSmoothVals,
+    std::vector<double> &prevSmoothFlat,
     const sf::Image* prevImage = nullptr,
     int dx = 0,
     int dy = 0
 ) {
-    auto size = image.getSize();
-    unsigned width  = size.x;
-    unsigned height = size.y;
+    auto sz = image.getSize();
+    unsigned width = sz.x;
+    unsigned height = sz.y;
+    size_t N = size_t(width) * size_t(height);
 
-    std::vector<std::vector<double>> smoothVals(width, std::vector<double>(height, std::numeric_limits<double>::quiet_NaN()));
-    std::vector<std::vector<char>> needsDetail(width, std::vector<char>(height, 1));
-    double minVal = std::numeric_limits<double>::max();
-    double maxVal = std::numeric_limits<double>::lowest();
+    std::vector<double> smoothFlat(N, std::numeric_limits<double>::quiet_NaN());
+    std::vector<char>   needsDetail(N, 1);
+    std::vector<int>    iterFlat(N, 0);
+
+    std::vector<uint8_t> pixels;
+    pixels.resize(N * 4);
 
     double pixelSizeX = (4.0 / double(width)) / zoom;
     double pixelSizeY = (4.0 / double(height)) / zoom;
     double pixelSize = pixelSizeX;
 
-    bool doReuse = (prevImage != nullptr);
+    double minVal = std::numeric_limits<double>::max();
+    double maxVal = std::numeric_limits<double>::lowest();
 
-    if (doReuse && (dx != 0 || dy != 0)) {
-        for (unsigned yy = 0; yy < height; ++yy) {
-            for (unsigned xx = 0; xx < width; ++xx) {
-                int px = int(xx) + dx;
-                int py = int(yy) + dy;
+    if (prevImage && prevSmoothFlat.size() == N && (dx != 0 || dy != 0)) {
+        for (unsigned y = 0; y < height; ++y) {
+            for (unsigned x = 0; x < width; ++x) {
+                int px = int(x) + dx;
+                int py = int(y) + dy;
+                size_t id = idx(x,y,width);
                 if (px >= 0 && px < int(width) && py >= 0 && py < int(height)) {
-                    smoothVals[xx][yy] = prevSmoothVals[px][py];
-                    needsDetail[xx][yy] = 0;
-                    image.setPixel({xx, yy}, prevImage->getPixel({(unsigned)px, (unsigned)py}));
-                    double v = smoothVals[xx][yy];
-                    if (!std::isnan(v)) {
-                        if (v < minVal) minVal = v;
-                        if (v > maxVal) maxVal = v;
+                    size_t pid = idx(unsigned(px), unsigned(py), width);
+                    smoothFlat[id] = prevSmoothFlat[pid];
+                    needsDetail[id] = 0;
+                    sf::Color c = prevImage->getPixel({unsigned(px), unsigned(py)});
+                    pixels[4*id + 0] = c.r;
+                    pixels[4*id + 1] = c.g;
+                    pixels[4*id + 2] = c.b;
+                    pixels[4*id + 3] = 255;
+                    if (!std::isnan(smoothFlat[id])) {
+                        if (smoothFlat[id] < minVal) minVal = smoothFlat[id];
+                        if (smoothFlat[id] > maxVal) maxVal = smoothFlat[id];
                     }
                 }
             }
@@ -128,87 +153,123 @@ void renderFractalCombined(
     for (unsigned y = 0; y < height; ++y) {
         unsigned x = 0;
         while (x < width) {
-            if (!needsDetail[x][y]) { ++x; continue; }
+            size_t id = idx(x,y,width);
+            if (!needsDetail[id]) { ++x; continue; }
 
-            double real = (double(x) - double(width)  / 2.0) * (4.0 / double(width))  / zoom + offsetX;
-            double imag = (double(y) - double(height) / 2.0) * (4.0 / double(height)) / zoom + offsetY;
-            std::complex<double> c(real, imag);
+            double cr = (double(x) - double(width)/2.0) * (4.0/double(width)) / zoom + offsetX;
+            double ci = (double(y) - double(height)/2.0) * (4.0/double(height)) / zoom + offsetY;
 
-            DEResult de = mandelbrotDE(c, maxIter, pixelSize);
+            DERes de = mandelbrot_de_scalar(cr, ci, maxIter, pixelSize);
 
-            if (!std::isnan(de.smooth)) {
-                if (de.smooth < minVal) minVal = de.smooth;
-                if (de.smooth > maxVal) maxVal = de.smooth;
+            double rep = de.smooth;
+            if (!std::isnan(rep)) {
+                if (rep < minVal) minVal = rep;
+                if (rep > maxVal) maxVal = rep;
             }
 
             if (de.dist <= pixelSize * DETAIL_MULTIPLIER) {
-                needsDetail[x][y] = 1;
-                smoothVals[x][y] = std::numeric_limits<double>::quiet_NaN();
+                needsDetail[id] = 1;
+                smoothFlat[id] = std::numeric_limits<double>::quiet_NaN();
+                iterFlat[id] = de.iter;
                 ++x;
                 continue;
             }
 
-            double stepPixelsD = (de.dist / pixelSize) * SAFETY_FACTOR;
-            int skip = int(std::floor(stepPixelsD));
+            double skipPixelsD = (de.dist / pixelSize) * SAFETY_FACTOR;
+            int skip = int(std::floor(skipPixelsD));
             if (skip < 1) skip = 1;
-            if (skip > MAX_HORIZONTAL_SKIP) skip = MAX_HORIZONTAL_SKIP;
+            if (skip > MAX_HORIZONTAL_SKIP_PIXELS) skip = MAX_HORIZONTAL_SKIP_PIXELS;
+            if (skip > int(width) - int(x)) skip = int(width) - int(x);
 
-            for (int k = 0; k < skip && (x + k) < int(width); ++k) {
-                smoothVals[x + k][y] = de.smooth;
-                needsDetail[x + k][y] = 0;
+            for (int k = 0; k < skip; ++k) {
+                unsigned xx = x + k;
+                size_t bid = idx(xx, y, width);
+                smoothFlat[bid] = de.smooth;
+                iterFlat[bid] = de.iter;
+                needsDetail[bid] = 0;
                 double norm = (maxVal > minVal) ? (de.smooth - minVal) / (maxVal - minVal) : 0.0;
-                sf::Color color = (de.iter >= maxIter) ? sf::Color::Black : mapColorLogScale(norm);
-                image.setPixel({unsigned(x + k), y}, color);
+                sf::Color col = (de.iter >= maxIter) ? sf::Color::Black : mapColorLogScale(norm);
+                pixels[4*bid + 0] = col.r;
+                pixels[4*bid + 1] = col.g;
+                pixels[4*bid + 2] = col.b;
+                pixels[4*bid + 3] = 255;
             }
-
             x += skip;
         }
     }
 
     for (unsigned y = 0; y < height; ++y) {
         for (unsigned x = 0; x < width; ++x) {
-            if (!needsDetail[x][y]) continue;
+            size_t id = idx(x,y,width);
+            if (!needsDetail[id]) continue;
 
-            double real = (double(x) - double(width)  / 2.0) * (4.0 / double(width))  / zoom + offsetX;
-            double imag = (double(y) - double(height) / 2.0) * (4.0 / double(height)) / zoom + offsetY;
-            std::complex<double> c(real, imag);
+            double cr = (double(x) - double(width)/2.0) * (4.0/double(width)) / zoom + offsetX;
+            double ci = (double(y) - double(height)/2.0) * (4.0/double(height)) / zoom + offsetY;
 
-            DEResult de = mandelbrotDE(c, maxIter, pixelSize);
+            DERes de = mandelbrot_de_scalar(cr, ci, maxIter, pixelSize);
 
-            smoothVals[x][y] = de.smooth;
+            smoothFlat[id] = de.smooth;
+            iterFlat[id] = de.iter;
+            needsDetail[id] = 0;
+
             if (de.smooth < minVal) minVal = de.smooth;
             if (de.smooth > maxVal) maxVal = de.smooth;
+
             double norm = (maxVal > minVal) ? (de.smooth - minVal) / (maxVal - minVal) : 0.0;
-            sf::Color color = (de.iter >= maxIter) ? sf::Color::Black : mapColorLogScale(norm);
-            image.setPixel({x, y}, color);
+            sf::Color col = (de.iter >= maxIter) ? sf::Color::Black : mapColorLogScale(norm);
+            pixels[4*id + 0] = col.r;
+            pixels[4*id + 1] = col.g;
+            pixels[4*id + 2] = col.b;
+            pixels[4*id + 3] = 255;
         }
     }
 
+    bool validRange = (maxVal > minVal);
     for (unsigned y = 0; y < height; ++y) {
         for (unsigned x = 0; x < width; ++x) {
-            double s = smoothVals[x][y];
-            if (std::isnan(s)) continue;
-            double norm = (maxVal > minVal) ? (s - minVal) / (maxVal - minVal) : 0.0;
-            sf::Color color = (s >= maxIter) ? sf::Color::Black : mapColorLogScale(norm);
-            image.setPixel({x, y}, color);
+            size_t id = idx(x,y,width);
+            double s = smoothFlat[id];
+            if (std::isnan(s)) {
+                pixels[4*id + 0] = 0;
+                pixels[4*id + 1] = 0;
+                pixels[4*id + 2] = 0;
+                pixels[4*id + 3] = 255;
+                continue;
+            }
+            double norm = validRange ? (s - minVal) / (maxVal - minVal) : 0.0;
+            sf::Color col = (iterFlat[id] >= maxIter) ? sf::Color::Black : mapColorLogScale(norm);
+            pixels[4*id + 0] = col.r;
+            pixels[4*id + 1] = col.g;
+            pixels[4*id + 2] = col.b;
+            pixels[4*id + 3] = 255;
         }
     }
 
-    prevSmoothVals = std::move(smoothVals);
+    image = sf::Image(sf::Vector2u(width, height), sf::Color::Black);
+    for (unsigned y = 0; y < height; ++y) {
+        for (unsigned x = 0; x < width; ++x) {
+            size_t id = idx(x,y,width);
+            sf::Color c(pixels[4*id+0], pixels[4*id+1], pixels[4*id+2], 255);
+            image.setPixel({x, y}, c);
+        }
+    }
+
+    prevSmoothFlat.swap(smoothFlat);
 }
 
-void timeFunction(std::function<void()> func) {
-    auto start = std::chrono::high_resolution_clock::now();
-    func();
-    auto end = std::chrono::high_resolution_clock::now();
-    std::chrono::duration<double> elapsed = end - start;
-    std::cout << "Elapsed time: " << elapsed.count() << " seconds\n";
+template<typename F>
+void timeFunction(F f) {
+    auto t0 = std::chrono::high_resolution_clock::now();
+    f();
+    auto t1 = std::chrono::high_resolution_clock::now();
+    std::chrono::duration<double> d = t1 - t0;
+    std::cout << "Elapsed: " << d.count() << " s\n";
 }
 
 int main() {
     const unsigned width = 800;
     const unsigned height = 600;
-    const int maxIter = 1000;
+    const int maxIter = 100;
     double zoom = 1.0;
     double offsetX = -0.5;
     double offsetY = 0.0;
@@ -218,7 +279,7 @@ int main() {
 
     sf::Image image({width, height});
     sf::Image prevImage;
-    std::vector<std::vector<double>> prevSmoothVals(width, std::vector<double>(height, 0.0));
+    std::vector<double> prevSmoothFlat(width * height, 0.0);
 
     sf::Texture texture(image);
     sf::Sprite sprite(texture);
@@ -245,14 +306,14 @@ int main() {
             }
             if (auto* e = event->getIf<sf::Event::MouseButtonPressed>()) {
                 if (e->button == sf::Mouse::Button::Left) {
-                    dragging = true;
+                dragging = true;
                     lastMousePos = sf::Mouse::getPosition(window);
                 }
             }
             if (auto* e = event->getIf<sf::Event::MouseButtonReleased>()) {
                 if (e->button == sf::Mouse::Button::Left) {
-                    dragging = false;
-                }
+                dragging = false;
+            }
             }
             if (event->is<sf::Event::MouseMoved>() && dragging) {
                 sf::Vector2i mouse = sf::Mouse::getPosition(window);
@@ -307,9 +368,9 @@ int main() {
             prevImage = image;
             timeFunction([&]() {
                 if ((totalDragDx != 0 || totalDragDy != 0) && (dragging || totalDragDx != 0 || totalDragDy != 0)) {
-                    renderFractalCombined(image, maxIter, zoom, offsetX, offsetY, prevSmoothVals, &prevImage, -totalDragDx, -totalDragDy);
+                    render_combined_fast(image, maxIter, zoom, offsetX, offsetY, prevSmoothFlat, &prevImage, -totalDragDx, -totalDragDy);
                 } else {
-                    renderFractalCombined(image, maxIter, zoom, offsetX, offsetY, prevSmoothVals, nullptr, 0, 0);
+                    render_combined_fast(image, maxIter, zoom, offsetX, offsetY, prevSmoothFlat, nullptr, 0, 0);
                 }
             });
             if (texture.loadFromImage(image)) {
