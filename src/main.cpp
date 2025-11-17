@@ -146,8 +146,9 @@ void renderCombinedFast(
                     }
                 }
             }
-            std::cout << "Rendered row " << y << " / " << height << std::flush << "\r";
+            std::cout << "Rendered row " << y+1 << " / " << height << std::flush << "\r";
         }
+        std::cout << "                             \r";
     }
     
     for (unsigned y = 0; y < height; ++y) {
@@ -264,7 +265,7 @@ void saveCurrentViewAsImage(unsigned imageWidth, unsigned imageHeight, int maxIt
     sf::Image image(sf::Vector2u(imageWidth, imageHeight));
     std::vector<double> smoothFlat(imageWidth * imageHeight, 0.0);
     renderCombinedFast(image, maxIter, zoom, offsetX, offsetY, smoothFlat, nullptr, 0, 0);
-    std::string filename = "fractal.png";
+    std::string filename = "images/fractal_" + std::to_string(offsetX) + "_" + std::to_string(offsetY) + "_" + std::to_string(zoom) + "x.png";
     if (image.saveToFile(filename)) {
         std::cout << "Saved image to " << filename << std::endl;
     } else {
