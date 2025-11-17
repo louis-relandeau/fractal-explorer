@@ -1,8 +1,11 @@
 # TODOs
 
-* moving around should only recompute the new area
 * change the color palette
 * compute more detailed where required, otherwise interpolate
+* zoom with box selection?
+* analytical soution for in bulbs
+* multithreading
+* dynamic wallpaper
 
 # Perf
 Always 1000 iter

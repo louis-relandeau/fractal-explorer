@@ -22,7 +22,7 @@ double SAFETY_FACTOR;
 double DETAIL_MULTIPLIER;
 double DZ_GUARD;
 
-inline DERes mandelbrot_de_scalar(double cr, double ci, int maxIter, double pixelSize) {
+inline DERes mandelbrotDEScalar(double cr, double ci, int maxIter, double pixelSize) {
     double zr = 0.0, zi = 0.0;
     double dzr = 0.0, dzi = 0.0;
     int n = 0;
@@ -95,7 +95,7 @@ sf::Color mapColorLogScale(double n) {
 
 inline size_t idx(unsigned x, unsigned y, unsigned width) { return size_t(y) * size_t(width) + size_t(x); }
 
-void render_combined_fast(
+void renderCombinedFast(
     sf::Image &image,
     int maxIter,
     double zoom,
@@ -146,26 +146,27 @@ void render_combined_fast(
                     }
                 }
             }
+            std::cout << "Rendered row " << y << " / " << height << std::flush << "\r";
         }
     }
-
+    
     for (unsigned y = 0; y < height; ++y) {
         unsigned x = 0;
         while (x < width) {
             size_t id = idx(x,y,width);
             if (!needsDetail[id]) { ++x; continue; }
-
+            
             double cr = (double(x) - double(width)/2.0) * (4.0/double(width)) / zoom + offsetX;
             double ci = (double(y) - double(height)/2.0) * (4.0/double(height)) / zoom + offsetY;
-
-            DERes de = mandelbrot_de_scalar(cr, ci, maxIter, pixelSize);
-
+            
+            DERes de = mandelbrotDEScalar(cr, ci, maxIter, pixelSize);
+            
             double rep = de.smooth;
             if (!std::isnan(rep)) {
                 if (rep < minVal) minVal = rep;
                 if (rep > maxVal) maxVal = rep;
             }
-
+            
             if (de.dist <= pixelSize * DETAIL_MULTIPLIER) {
                 needsDetail[id] = 1;
                 smoothFlat[id] = std::numeric_limits<double>::quiet_NaN();
@@ -173,13 +174,13 @@ void render_combined_fast(
                 ++x;
                 continue;
             }
-
+            
             double skipPixelsD = (de.dist / pixelSize) * SAFETY_FACTOR;
             int skip = int(std::floor(skipPixelsD));
             if (skip < 1) skip = 1;
             if (skip > MAX_HORIZONTAL_SKIP_PIXELS) skip = MAX_HORIZONTAL_SKIP_PIXELS;
             if (skip > int(width) - int(x)) skip = int(width) - int(x);
-
+            
             for (int k = 0; k < skip; ++k) {
                 unsigned xx = x + k;
                 size_t bid = idx(xx, y, width);
@@ -195,6 +196,7 @@ void render_combined_fast(
             }
             x += skip;
         }
+        std::cout << "Rendered row " << y << " / " << height << std::flush << "\r";
     }
 
     for (unsigned y = 0; y < height; ++y) {
@@ -205,7 +207,7 @@ void render_combined_fast(
             double cr = (double(x) - double(width)/2.0) * (4.0/double(width)) / zoom + offsetX;
             double ci = (double(y) - double(height)/2.0) * (4.0/double(height)) / zoom + offsetY;
 
-            DERes de = mandelbrot_de_scalar(cr, ci, maxIter, pixelSize);
+            DERes de = mandelbrotDEScalar(cr, ci, maxIter, pixelSize);
 
             smoothFlat[id] = de.smooth;
             iterFlat[id] = de.iter;
@@ -256,6 +258,20 @@ void render_combined_fast(
     prevSmoothFlat.swap(smoothFlat);
 }
 
+void saveCurrentViewAsImage(unsigned imageWidth, unsigned imageHeight, int maxIter, double zoom, double offsetX, double offsetY) {
+    std::cout << "Saving current view as image..." << std::endl;
+    std::cout << "At position (" << offsetX << ", " << offsetY << ") with zoom " << zoom << std::endl;
+    sf::Image image(sf::Vector2u(imageWidth, imageHeight));
+    std::vector<double> smoothFlat(imageWidth * imageHeight, 0.0);
+    renderCombinedFast(image, maxIter, zoom, offsetX, offsetY, smoothFlat, nullptr, 0, 0);
+    std::string filename = "fractal.png";
+    if (image.saveToFile(filename)) {
+        std::cout << "Saved image to " << filename << std::endl;
+    } else {
+        std::cerr << "Failed to save image!" << std::endl;
+    }
+}
+
 template<typename F>
 void timeFunction(F f) {
     auto t0 = std::chrono::high_resolution_clock::now();
@@ -266,9 +282,8 @@ void timeFunction(F f) {
 }
 
 int main() {
-
-    // load parameters from YAML file
     YAML::Node config = YAML::LoadFile("params.yaml");
+
     const auto renderNode = config["Render"];
     MAX_HORIZONTAL_SKIP_PIXELS = renderNode["MaxHorizontalSkipPixels"].as<int>();
     EARLY_EXIT_MULTIPLIER = renderNode["EarlyExitMultiplier"].as<double>();
@@ -279,6 +294,8 @@ int main() {
     const auto windowNode = config["Window"];
     const unsigned width = windowNode["Width"].as<unsigned>();
     const unsigned height = windowNode["Height"].as<unsigned>();
+    const unsigned imageWidth = windowNode["ImageWidth"].as<unsigned>();
+    const unsigned imageHeight = windowNode["ImageHeight"].as<unsigned>();
 
     const auto fractalNode = config["Fractal"];
     const int maxIter = fractalNode["MaxIterations"].as<int>();
@@ -369,6 +386,8 @@ int main() {
                     offsetX = mx - (mouse.x - width / 2.0) * (4.0 / double(width)) / zoom;
                     offsetY = my - (mouse.y - height / 2.0) * (4.0 / double(height)) / zoom;
                     needsUpdate = true;
+                } else if (e->code == sf::Keyboard::Key::S) {
+                    saveCurrentViewAsImage(imageWidth, imageHeight, maxIter, zoom, offsetX, offsetY);
                 }
                 totalDragDx += pdx;
                 totalDragDy += pdy;
@@ -380,9 +399,9 @@ int main() {
             prevImage = image;
             timeFunction([&]() {
                 if ((totalDragDx != 0 || totalDragDy != 0) && (dragging || totalDragDx != 0 || totalDragDy != 0)) {
-                    render_combined_fast(image, maxIter, zoom, offsetX, offsetY, prevSmoothFlat, &prevImage, -totalDragDx, -totalDragDy);
+                    renderCombinedFast(image, maxIter, zoom, offsetX, offsetY, prevSmoothFlat, &prevImage, -totalDragDx, -totalDragDy);
                 } else {
-                    render_combined_fast(image, maxIter, zoom, offsetX, offsetY, prevSmoothFlat, nullptr, 0, 0);
+                    renderCombinedFast(image, maxIter, zoom, offsetX, offsetY, prevSmoothFlat, nullptr, 0, 0);
                 }
             });
             if (texture.loadFromImage(image)) {

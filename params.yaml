@@ -6,8 +6,10 @@ Render:
   DZGuard: 1e-300
 
 Window:
-  Width: 600
-  Height: 600
+  Width: 800
+  Height: 566
+  ImageWidth: 14043
+  ImageHeight: 9933
 
 Fractal:
   MaxIterations: 500
