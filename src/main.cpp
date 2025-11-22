@@ -115,9 +115,6 @@ void renderCombinedFast(
     std::vector<char>   needsDetail(N, 1);
     std::vector<int>    iterFlat(N, 0);
 
-    std::vector<uint8_t> pixels;
-    pixels.resize(N * 4);
-
     double pixelSizeX = (4.0 / double(width)) / zoom;
     double pixelSizeY = (4.0 / double(height)) / zoom;
     double pixelSize = pixelSizeX;
@@ -135,20 +132,9 @@ void renderCombinedFast(
                     size_t pid = idx(unsigned(px), unsigned(py), width);
                     smoothFlat[id] = prevSmoothFlat[pid];
                     needsDetail[id] = 0;
-                    sf::Color c = prevImage->getPixel({unsigned(px), unsigned(py)});
-                    pixels[4*id + 0] = c.r;
-                    pixels[4*id + 1] = c.g;
-                    pixels[4*id + 2] = c.b;
-                    pixels[4*id + 3] = 255;
-                    if (!std::isnan(smoothFlat[id])) {
-                        if (smoothFlat[id] < minVal) minVal = smoothFlat[id];
-                        if (smoothFlat[id] > maxVal) maxVal = smoothFlat[id];
-                    }
                 }
             }
-            std::cout << "Rendered row " << y+1 << " / " << height << std::flush << "\r";
         }
-        std::cout << "                             \r";
     }
     
     for (unsigned y = 0; y < height; ++y) {
@@ -156,18 +142,12 @@ void renderCombinedFast(
         while (x < width) {
             size_t id = idx(x,y,width);
             if (!needsDetail[id]) { ++x; continue; }
-            
+
             double cr = (double(x) - double(width)/2.0) * (4.0/double(width)) / zoom + offsetX;
             double ci = (double(y) - double(height)/2.0) * (4.0/double(height)) / zoom + offsetY;
-            
+
             DERes de = mandelbrotDEScalar(cr, ci, maxIter, pixelSize);
-            
-            double rep = de.smooth;
-            if (!std::isnan(rep)) {
-                if (rep < minVal) minVal = rep;
-                if (rep > maxVal) maxVal = rep;
-            }
-            
+
             if (de.dist <= pixelSize * DETAIL_MULTIPLIER) {
                 needsDetail[id] = 1;
                 smoothFlat[id] = std::numeric_limits<double>::quiet_NaN();
@@ -175,29 +155,23 @@ void renderCombinedFast(
                 ++x;
                 continue;
             }
-            
+
             double skipPixelsD = (de.dist / pixelSize) * SAFETY_FACTOR;
             int skip = int(std::floor(skipPixelsD));
             if (skip < 1) skip = 1;
             if (skip > MAX_HORIZONTAL_SKIP_PIXELS) skip = MAX_HORIZONTAL_SKIP_PIXELS;
             if (skip > int(width) - int(x)) skip = int(width) - int(x);
-            
+
             for (int k = 0; k < skip; ++k) {
                 unsigned xx = x + k;
                 size_t bid = idx(xx, y, width);
                 smoothFlat[bid] = de.smooth;
                 iterFlat[bid] = de.iter;
                 needsDetail[bid] = 0;
-                double norm = (maxVal > minVal) ? (de.smooth - minVal) / (maxVal - minVal) : 0.0;
-                sf::Color col = (de.iter >= maxIter) ? sf::Color::Black : mapColorLogScale(norm);
-                pixels[4*bid + 0] = col.r;
-                pixels[4*bid + 1] = col.g;
-                pixels[4*bid + 2] = col.b;
-                pixels[4*bid + 3] = 255;
             }
             x += skip;
         }
-        std::cout << "Rendered row " << y << " / " << height << std::flush << "\r";
+        std::cout << "First pass row " << y+1 << " / " << height << "        \r" << std::flush;
     }
 
     for (unsigned y = 0; y < height; ++y) {
@@ -213,33 +187,36 @@ void renderCombinedFast(
             smoothFlat[id] = de.smooth;
             iterFlat[id] = de.iter;
             needsDetail[id] = 0;
+        }
+    }
 
-            if (de.smooth < minVal) minVal = de.smooth;
-            if (de.smooth > maxVal) maxVal = de.smooth;
-
-            double norm = (maxVal > minVal) ? (de.smooth - minVal) / (maxVal - minVal) : 0.0;
-            sf::Color col = (de.iter >= maxIter) ? sf::Color::Black : mapColorLogScale(norm);
-            pixels[4*id + 0] = col.r;
-            pixels[4*id + 1] = col.g;
-            pixels[4*id + 2] = col.b;
-            pixels[4*id + 3] = 255;
+    // Recompute min/max from all valid pixels after all updates
+    minVal = std::numeric_limits<double>::max();
+    maxVal = std::numeric_limits<double>::lowest();
+    for (size_t i = 0; i < N; ++i) {
+        double v = smoothFlat[i];
+        if (!std::isnan(v)) {
+            if (v < minVal) minVal = v;
+            if (v > maxVal) maxVal = v;
         }
     }
 
     bool validRange = (maxVal > minVal);
+    std::vector<uint8_t> pixels(N * 4);
+
     for (unsigned y = 0; y < height; ++y) {
         for (unsigned x = 0; x < width; ++x) {
             size_t id = idx(x,y,width);
             double s = smoothFlat[id];
+
+            sf::Color col;
             if (std::isnan(s)) {
-                pixels[4*id + 0] = 0;
-                pixels[4*id + 1] = 0;
-                pixels[4*id + 2] = 0;
-                pixels[4*id + 3] = 255;
-                continue;
+                col = sf::Color::Black;
+            } else {
+                double norm = validRange ? (s - minVal) / (maxVal - minVal) : 0.0;
+                col = (iterFlat[id] >= maxIter) ? sf::Color::Black : mapColorLogScale(norm);
             }
-            double norm = validRange ? (s - minVal) / (maxVal - minVal) : 0.0;
-            sf::Color col = (iterFlat[id] >= maxIter) ? sf::Color::Black : mapColorLogScale(norm);
+
             pixels[4*id + 0] = col.r;
             pixels[4*id + 1] = col.g;
             pixels[4*id + 2] = col.b;
@@ -247,7 +224,7 @@ void renderCombinedFast(
         }
     }
 
-    image = sf::Image(sf::Vector2u(width, height), sf::Color::Black);
+    // Fixed: Update image pixels efficiently
     for (unsigned y = 0; y < height; ++y) {
         for (unsigned x = 0; x < width; ++x) {
             size_t id = idx(x,y,width);
@@ -256,6 +233,7 @@ void renderCombinedFast(
         }
     }
 
+    std::cout << "                                          \r" << std::flush;
     prevSmoothFlat.swap(smoothFlat);
 }
 
@@ -316,7 +294,7 @@ int main() {
     bool needsUpdate = true;
     bool dragging = false;
     sf::Vector2i lastMousePos;
-    int totalDragDx = 0, totalDragDy = 0;
+    int totalPanDx = 0, totalPanDy = 0;
 
     while (window.isOpen()) {
         while (auto event = window.pollEvent()) {
@@ -332,18 +310,20 @@ int main() {
                 double my = (mouse.y - height / 2.0) * (4.0 / height) / oldZoom + offsetY;
                 offsetX = mx - (mouse.x - width / 2.0) * (4.0 / width) / zoom;
                 offsetY = my - (mouse.y - height / 2.0) * (4.0 / height) / zoom;
+                totalPanDx = 0;
+                totalPanDy = 0;
                 needsUpdate = true;
             }
             if (auto* e = event->getIf<sf::Event::MouseButtonPressed>()) {
                 if (e->button == sf::Mouse::Button::Left) {
-                dragging = true;
+                    dragging = true;
                     lastMousePos = sf::Mouse::getPosition(window);
                 }
             }
             if (auto* e = event->getIf<sf::Event::MouseButtonReleased>()) {
                 if (e->button == sf::Mouse::Button::Left) {
-                dragging = false;
-            }
+                    dragging = false;
+                }
             }
             if (event->is<sf::Event::MouseMoved>() && dragging) {
                 sf::Vector2i mouse = sf::Mouse::getPosition(window);
@@ -352,29 +332,28 @@ int main() {
                 offsetX -= dx * (4.0 / double(width)) / zoom;
                 offsetY -= dy * (4.0 / double(height)) / zoom;
                 lastMousePos = mouse;
-                totalDragDx += dx;
-                totalDragDy += dy;
+                totalPanDx += dx;
+                totalPanDy += dy;
                 needsUpdate = true;
             }
 
             if (auto* e = event->getIf<sf::Event::KeyPressed>()) {
                 int panAmount = 20;
-                int pdx = 0, pdy = 0;
                 if (e->code == sf::Keyboard::Key::Left) {
-                    offsetX -= panAmount * (4.0 / double(width)) / zoom;
-                    pdx = -panAmount;
+                    offsetX += panAmount * (4.0 / double(width)) / zoom;
+                    totalPanDx -= panAmount;
                     needsUpdate = true;
                 } else if (e->code == sf::Keyboard::Key::Right) {
-                    offsetX += panAmount * (4.0 / double(width)) / zoom;
-                    pdx = panAmount;
+                    offsetX -= panAmount * (4.0 / double(width)) / zoom;
+                    totalPanDx += panAmount;
                     needsUpdate = true;
                 } else if (e->code == sf::Keyboard::Key::Up) {
-                    offsetY -= panAmount * (4.0 / double(height)) / zoom;
-                    pdy = -panAmount;
+                    offsetY += panAmount * (4.0 / double(height)) / zoom;
+                    totalPanDy -= panAmount;
                     needsUpdate = true;
                 } else if (e->code == sf::Keyboard::Key::Down) {
-                    offsetY += panAmount * (4.0 / double(height)) / zoom;
-                    pdy = panAmount;
+                    offsetY -= panAmount * (4.0 / double(height)) / zoom;
+                    totalPanDy += panAmount;
                     needsUpdate = true;
                 } else if (e->code == sf::Keyboard::Key::J || e->code == sf::Keyboard::Key::K) {
                     double oldZoom = zoom;
@@ -386,30 +365,36 @@ int main() {
                     double my = (mouse.y - height / 2.0) * (4.0 / double(height)) / oldZoom + offsetY;
                     offsetX = mx - (mouse.x - width / 2.0) * (4.0 / double(width)) / zoom;
                     offsetY = my - (mouse.y - height / 2.0) * (4.0 / double(height)) / zoom;
+                    totalPanDx = 0;
+                    totalPanDy = 0;
                     needsUpdate = true;
                 } else if (e->code == sf::Keyboard::Key::S) {
                     saveCurrentViewAsImage(imageWidth, imageHeight, maxIter, zoom, offsetX, offsetY);
                 }
-                totalDragDx += pdx;
-                totalDragDy += pdy;
             }
         }
 
         if (needsUpdate) {
-            std::cout << "Updating fractal...\n";
             prevImage = image;
             timeFunction([&]() {
-                if ((totalDragDx != 0 || totalDragDy != 0) && (dragging || totalDragDx != 0 || totalDragDy != 0)) {
-                    renderCombinedFast(image, maxIter, zoom, offsetX, offsetY, prevSmoothFlat, &prevImage, -totalDragDx, -totalDragDy);
+                if (prevSmoothFlat.size() == image.getSize().x * image.getSize().y && (totalPanDx != 0 || totalPanDy != 0)) {
+                    renderCombinedFast(image, maxIter, zoom, offsetX, offsetY, prevSmoothFlat, &prevImage, -totalPanDx, -totalPanDy);
                 } else {
                     renderCombinedFast(image, maxIter, zoom, offsetX, offsetY, prevSmoothFlat, nullptr, 0, 0);
                 }
             });
-            if (texture.loadFromImage(image)) {
+
+            auto imgSize = image.getSize();
+            if (!texture.getSize().x || texture.getSize() != imgSize) {
+                texture = sf::Texture(image);
                 sprite.setTexture(texture);
+            } else {
+                texture.update(image);
             }
+
             needsUpdate = false;
-            totalDragDx = 0; totalDragDy = 0;
+            totalPanDx = 0;
+            totalPanDy = 0;
         }
 
         window.clear();
