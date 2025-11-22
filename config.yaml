@@ -1,0 +1,19 @@
+# Render:
+#   MaxHorizontalSkipPixels: 8
+#   EarlyExitMultiplier: 4.0
+#   SafetyFactor: 0.9
+#   DetailMultiplier: 1.5
+#   DZGuard: 1e-300
+
+Window:
+  Width: 800
+  Height: 566
+  # ImageWidth: 14043
+  # ImageHeight: 9933
+
+Fractal:
+  Name: "Mandelbrot"
+#   MaxIterations: 500
+#   InitialZoom: 1.0
+#   InitialOffsetX: -0.5
+#   InitialOffsetY: 0.0

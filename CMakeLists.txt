@@ -7,7 +7,15 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(SFML 3 REQUIRED COMPONENTS Graphics Window System)
 find_package(yaml-cpp REQUIRED)
 
-add_executable(fractal src/main.cpp)
+add_executable(fractal 
+    src/main_new.cpp
+    src/ConfigLoader.cpp
+    src/FractalSampler.cpp
+    src/Mandelbrot.cpp
+    src/EventHandler.cpp
+)
+
+target_include_directories(fractal PRIVATE ${CMAKE_SOURCE_DIR}/include)
 
 target_link_libraries(fractal PRIVATE
     SFML::Graphics
