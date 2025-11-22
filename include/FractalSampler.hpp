@@ -15,6 +15,9 @@ public:
 
 private:
     using FractalFn = std::uint32_t (*)(double cr, double ci);
+    using FractalRowFn =
+        void (*)(int width, double y, double x_start, double x_step, std::uint32_t *output);
     std::string fractalName;
     FractalFn fractalFunction;
+    FractalRowFn fractalRowFunction;
 };

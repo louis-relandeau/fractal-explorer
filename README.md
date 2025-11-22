@@ -17,3 +17,4 @@ New structure
 - complex: 1.1 s
 - doubles: 540 ms
 - unrolling by 4: 520 ms -> not worth it for now
+- using AVX for 4 pixels: 500 ms -> also not for now too constraining
