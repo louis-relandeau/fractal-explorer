@@ -4,15 +4,15 @@
 
 EventHandler::EventHandler(sf::RenderWindow &window,
                            sf::Sprite &sprite,
-                           FractalSampler &sampler,
-                           sf::Image &image,
+                           std::unique_ptr<FractalBase> fractal,
+                           sf::Image *image,
                            sf::Texture &texture,
-                           Viewport &viewport)
+                           Viewport *viewport)
     : window(window),
       image(image),
       texture(texture),
       sprite(sprite),
-      sampler(sampler),
+      fractal(std::move(fractal)),
       viewport(viewport) {}
 
 void EventHandler::run() {
@@ -52,16 +52,16 @@ void EventHandler::run() {
 
 void EventHandler::handleQuitEvent(sf::RenderWindow &window) { window.close(); }
 
-void EventHandler::handleArrowKeyEvent(sf::Event::KeyPressed const &e, Viewport &viewport) {
+void EventHandler::handleArrowKeyEvent(sf::Event::KeyPressed const &e, Viewport *viewport) {
     double panFactor = 0.1; // % of the viewport size
     if (e.code == sf::Keyboard::Key::Left) {
-        viewport.centerX += panFactor * viewport.width;
+        viewport->centerX += panFactor * viewport->width;
     } else if (e.code == sf::Keyboard::Key::Right) {
-        viewport.centerX -= panFactor * viewport.width;
+        viewport->centerX -= panFactor * viewport->width;
     } else if (e.code == sf::Keyboard::Key::Up) {
-        viewport.centerY -= panFactor * viewport.height;
+        viewport->centerY -= panFactor * viewport->height;
     } else if (e.code == sf::Keyboard::Key::Down) {
-        viewport.centerY += panFactor * viewport.height;
+        viewport->centerY += panFactor * viewport->height;
     }
     needsRedraw = true;
 }
@@ -74,16 +74,17 @@ void EventHandler::handleMouseWheelEvent(const sf::Event::MouseWheelScrolled &e)
         zoom /= 1.2;
     sf::Vector2i mouse = sf::Mouse::getPosition(window);
     auto winSize = window.getSize();
-    double mx = (mouse.x - int(winSize.x) / 2.0) * (viewport.width / double(winSize.x)) / oldZoom +
-                viewport.centerX;
-    double my = (mouse.y - int(winSize.y) / 2.0) * (viewport.height / double(winSize.y)) / oldZoom +
-                viewport.centerY;
-    viewport.width = viewport.width / oldZoom * zoom;
-    viewport.height = viewport.height / oldZoom * zoom;
-    viewport.centerX = mx - (mouse.x - int(winSize.x) / 2.0) *
-                                  (viewport.width / double(winSize.x)) / zoom;
-    viewport.centerY = my - (mouse.y - int(winSize.y) / 2.0) *
-                                  (viewport.height / double(winSize.y)) / zoom;
+    double mx = (mouse.x - int(winSize.x) / 2.0) * (viewport->width / double(winSize.x)) / oldZoom +
+                viewport->centerX;
+    double my =
+        (mouse.y - int(winSize.y) / 2.0) * (viewport->height / double(winSize.y)) / oldZoom +
+        viewport->centerY;
+    viewport->width = viewport->width / oldZoom * zoom;
+    viewport->height = viewport->height / oldZoom * zoom;
+    viewport->centerX =
+        mx - (mouse.x - int(winSize.x) / 2.0) * (viewport->width / double(winSize.x)) / zoom;
+    viewport->centerY =
+        my - (mouse.y - int(winSize.y) / 2.0) * (viewport->height / double(winSize.y)) / zoom;
     needsRedraw = true;
 }
 
@@ -105,14 +106,14 @@ void EventHandler::handleMouseMoved() {
     auto winSize = window.getSize();
     int dx = mouse.x - lastMousePos.x;
     int dy = mouse.y - lastMousePos.y;
-    viewport.centerX -= dx * (viewport.width / double(winSize.x)) / zoom;
-    viewport.centerY += dy * (viewport.height / double(winSize.y)) / zoom;
+    viewport->centerX -= dx * (viewport->width / double(winSize.x)) / zoom;
+    viewport->centerY += dy * (viewport->height / double(winSize.y)) / zoom;
     lastMousePos = mouse;
     needsRedraw = true;
 }
 
 void EventHandler::updateViewportAndRedraw() {
-    timeFunction([&] { sampler.compute(image, viewport); });
-    texture.update(image);
+    timeFunction([&] { fractal->compute(); });
+    texture.update(*image);
     sprite.setTexture(texture);
 }

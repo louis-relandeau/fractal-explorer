@@ -18,3 +18,4 @@ New structure
 - doubles: 545 ms
 - unrolling by 4: 520 ms -> not worth it for now
 - using AVX for 4 pixels: 500 ms -> also not for now too constraining
+- some analytical instant returns and symmetry: 39 ms -> zoom meh

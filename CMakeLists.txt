@@ -10,7 +10,6 @@ find_package(yaml-cpp REQUIRED)
 add_executable(fractal 
     src/main_new.cpp
     src/ConfigLoader.cpp
-    src/FractalSampler.cpp
     src/Mandelbrot.cpp
     src/EventHandler.cpp
 )

@@ -1,6 +1,14 @@
 #pragma once
 
-#include <complex>
 #include <cstdint>
 
-std::uint32_t mandelbrotFunction(double cr, double ci);
+#include <FractalBase.hpp>
+
+class Mandelbrot : public FractalBase {
+public:
+    Mandelbrot(sf::Image *image, Viewport *vp) : FractalBase(image, vp) {}
+
+    void compute() override;
+
+    std::uint32_t computePoint(double cr, double ci) const override;
+};
