@@ -19,11 +19,13 @@ int main() {
                             windowTitle);
     window.setFramerateLimit(60);
 
+    auto actualSize = window.getSize(); // i3 resizes
+
     double initialWidth = 4.0;
-    double initialHeight = initialWidth * config.windowParams.height / config.windowParams.width;
+    double initialHeight = initialWidth * actualSize.y / double(actualSize.x);
     Viewport viewport{0, 0, initialWidth, initialHeight};
 
-    sf::Image *image = new sf::Image({config.windowParams.width, config.windowParams.height});
+    sf::Image *image = new sf::Image(actualSize);
     sf::Texture texture(image->getSize());
     sf::Sprite sprite(texture);
 

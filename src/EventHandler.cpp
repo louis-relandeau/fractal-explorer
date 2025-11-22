@@ -67,24 +67,26 @@ void EventHandler::handleArrowKeyEvent(sf::Event::KeyPressed const &e, Viewport 
 }
 
 void EventHandler::handleMouseWheelEvent(const sf::Event::MouseWheelScrolled &e) {
-    double oldZoom = zoom;
-    if (e.delta > 0)
-        zoom *= 1.2;
-    else if (e.delta < 0)
-        zoom /= 1.2;
     sf::Vector2i mouse = sf::Mouse::getPosition(window);
     auto winSize = window.getSize();
-    double mx = (mouse.x - int(winSize.x) / 2.0) * (viewport->width / double(winSize.x)) / oldZoom +
-                viewport->centerX;
-    double my =
-        (mouse.y - int(winSize.y) / 2.0) * (viewport->height / double(winSize.y)) / oldZoom +
-        viewport->centerY;
-    viewport->width = viewport->width / oldZoom * zoom;
-    viewport->height = viewport->height / oldZoom * zoom;
-    viewport->centerX =
-        mx - (mouse.x - int(winSize.x) / 2.0) * (viewport->width / double(winSize.x)) / zoom;
-    viewport->centerY =
-        my - (mouse.y - int(winSize.y) / 2.0) * (viewport->height / double(winSize.y)) / zoom;
+
+    double zoomFactor;
+    if (e.delta > 0)
+        zoomFactor = 1.2;
+    else if (e.delta < 0)
+        zoomFactor = 1.0 / 1.2;
+    else
+        return;
+
+    double mx = (mouse.x - winSize.x / 2.0) * (viewport->width / winSize.x) + viewport->centerX;
+    double my = -(mouse.y - winSize.y / 2.0) * (viewport->height / winSize.y) + viewport->centerY;
+
+    viewport->width /= zoomFactor;
+    viewport->height /= zoomFactor;
+
+    viewport->centerX = mx - (mouse.x - winSize.x / 2.0) * (viewport->width / winSize.x);
+    viewport->centerY = my + (mouse.y - winSize.y / 2.0) * (viewport->height / winSize.y);
+
     needsRedraw = true;
 }
 
@@ -106,8 +108,8 @@ void EventHandler::handleMouseMoved() {
     auto winSize = window.getSize();
     int dx = mouse.x - lastMousePos.x;
     int dy = mouse.y - lastMousePos.y;
-    viewport->centerX -= dx * (viewport->width / double(winSize.x)) / zoom;
-    viewport->centerY += dy * (viewport->height / double(winSize.y)) / zoom;
+    viewport->centerX -= dx * (viewport->width / double(winSize.x));
+    viewport->centerY += dy * (viewport->height / double(winSize.y));
     lastMousePos = mouse;
     needsRedraw = true;
 }
