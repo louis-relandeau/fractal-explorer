@@ -23,5 +23,3 @@ target_link_libraries(fractal PRIVATE
     SFML::System
     yaml-cpp
 )
-
-target_compile_options(fractal PRIVATE -mavx2)
