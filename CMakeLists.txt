@@ -12,6 +12,7 @@ add_executable(fractal
     src/ConfigLoader.cpp
     src/Mandelbrot.cpp
     src/EventHandler.cpp
+    src/FractalBase.cpp
 )
 
 target_include_directories(fractal PRIVATE ${CMAKE_SOURCE_DIR}/include)

@@ -22,7 +22,10 @@ private:
     void handleMouseButtonPressed(const sf::Event::MouseButtonPressed &e);
     void handleMouseButtonReleased(const sf::Event::MouseButtonReleased &e);
     void handleMouseMoved();
+    void handleZoomWithKeyboard(const sf::Event::KeyPressed &e);
+    void handleSaveImageEvent();
 
+    void applyZoomAtMouse(double zoomFactor);
     void updateViewportAndRedraw();
 
     sf::RenderWindow &window;
