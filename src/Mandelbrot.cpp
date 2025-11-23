@@ -1,7 +1,6 @@
 #include "Mandelbrot.hpp"
 
 #include <cmath>
-#include <iostream>
 
 void Mandelbrot::compute() {
     auto size = image->getSize();
@@ -34,115 +33,79 @@ void Mandelbrot::compute() {
     }
 
     for (std::size_t y = y_start; y < y_end; y++) {
-        std::size_t x = 0;
-
-        while (x < imageWidth) {
+        for (std::size_t x = 0; x < imageWidth; x++) {
             double cx = left + static_cast<double>(x) * dx;
             double cy = top - static_cast<double>(y) * dy;
-            const auto [color, distanceEstimate] = computePoint(cx, cy);
+            std::uint32_t color = computePoint(cx, cy);
             sf::Color sfColor((color >> 16) & 0xFF, // R
                               (color >> 8) & 0xFF,  // G
                               color & 0xFF,         // B
                               255                   // A always opaque
             );
+            image->setPixel({static_cast<unsigned int>(x), static_cast<unsigned int>(y)}, sfColor);
 
-            size_t distanceEstimatePx = 1;
-            if (distanceEstimate > 0) {
-                distanceEstimatePx =
-                    std::max(static_cast<std::size_t>(distanceEstimate / dx * 0.9), size_t(1));
-            }
-
-            std::size_t endX = std::min(x + distanceEstimatePx, imageWidth);
-            for (std::size_t fillX = x; fillX < endX; fillX++) {
-                image->setPixel({static_cast<unsigned int>(fillX), static_cast<unsigned int>(y)},
-                                sfColor);
-
-                // symmetry maybe
-                if (useSymmetry) {
-                    double cy_mirror = -cy;
-                    std::size_t mirror_y =
-                        static_cast<std::size_t>(std::round((top - cy_mirror) / dy));
-                    if (mirror_y != y && mirror_y < imageHeight) {
-                        image->setPixel(
-                            {static_cast<unsigned int>(fillX), static_cast<unsigned int>(mirror_y)},
-                            sfColor);
-                    }
+            // symmetry maybe
+            if (useSymmetry) {
+                double cy_mirror = -cy;
+                std::size_t mirror_y = static_cast<std::size_t>(std::round((top - cy_mirror) / dy));
+                if (mirror_y != y && mirror_y < imageHeight) {
+                    image->setPixel(
+                        {static_cast<unsigned int>(x), static_cast<unsigned int>(mirror_y)},
+                        sfColor);
                 }
             }
-
-            x += distanceEstimatePx;
         }
     }
 }
 
-std::pair<std::uint32_t, double> Mandelbrot::computePoint(double cr, double ci) const {
-    double distanceEstimate = 0.0;
-
+std::uint32_t Mandelbrot::computePoint(double cr, double ci) const {
     // main cardioid: (q(q + (cr - 0.25)) < 0.25 * ci^2) where q = (cr - 0.25)^2 + ci^2
     double crShifted = cr - 0.25;
     double q = crShifted * crShifted + ci * ci;
     if (q * (q + crShifted) < 0.25 * ci * ci) {
-        return {0x000000, distanceEstimate};
+        return 0x000000;
     }
 
     // period-2 bulb: (cr + 1)^2 + ci^2 < 0.0625 (radius 0.25 circle centered at (-1, 0))
     double crPlus1 = cr + 1.0;
     if (crPlus1 * crPlus1 + ci * ci < 0.0625) {
-        return {0x000000, distanceEstimate};
+        return 0x000000;
     }
 
     const int maxIterations = 1000;
     double zr = 0.0, zi = 0.0;
     double zr2 = 0.0, zi2 = 0.0;
 
-    double dzr = 1.0, dzi = 0.0;
     double zrOld = 0.0, ziOld = 0.0;
-
     int checkPeriod = 20;
     int nextCheck = checkPeriod;
 
     int n = 0;
-    while (n < maxIterations) {
-        double temp_zr = zr * zr - zi * zi + cr;
-        double temp_zi = 2.0 * zr * zi + ci;
-
-        double temp_dzr = 2.0 * (zr * dzr - zi * dzi) + 1.0;
-        double temp_dzi = 2.0 * (zr * dzi + zi * dzr);
-
-        zr = temp_zr;
-        zi = temp_zi;
-        dzr = temp_dzr;
-        dzi = temp_dzi;
-
+    while (zr2 + zi2 <= 4.0 && n < maxIterations) {
+        zi = 2.0 * zr * zi + ci;
+        zr = zr2 - zi2 + cr;
         zr2 = zr * zr;
         zi2 = zi * zi;
         ++n;
 
-        // periodicity check
+        // periodicty check
         if (n == nextCheck) {
             double diffR = zr - zrOld;
             double diffI = zi - ziOld;
             if (diffR * diffR + diffI * diffI < 1e-20) {
-                return {0x000000, distanceEstimate};
+                return 0x000000;
             }
             zrOld = zr;
             ziOld = zi;
             nextCheck += checkPeriod;
             checkPeriod *= 2; // exponential backoff
         }
-
-        if (zr2 + zi2 > 4.0) {
-            double z_mag = std::sqrt(zr2 + zi2);
-            double dz_mag = std::sqrt(dzr * dzr + dzi * dzi);
-            distanceEstimate = 0.5 * z_mag * std::log(z_mag) / dz_mag;
-            break;
-        }
     }
 
     if (n == maxIterations) {
-        return {0x000000, distanceEstimate};
+        return 0x000000;
     } else {
         unsigned char color = static_cast<unsigned char>(255 * n / maxIterations);
-        return {(color << 16) | (color << 8) | color, distanceEstimate};
+        return (color << 16) | (color << 8) | color;
     }
 }

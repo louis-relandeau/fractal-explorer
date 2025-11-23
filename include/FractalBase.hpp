@@ -15,7 +15,7 @@ public:
     virtual void compute() = 0;
 
     /* Returns color of a single point */
-    virtual std::pair<std::uint32_t, double> computePoint(double x, double y) const = 0;
+    virtual uint32_t computePoint(double x, double y) const = 0;
 
     void backupAndReplacePointers(sf::Image *newImage, Viewport *newVp);
     void restoreBackedUpPointers();

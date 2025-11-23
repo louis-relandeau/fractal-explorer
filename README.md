@@ -19,7 +19,3 @@ New structure
 - unrolling by 4: 520 ms -> not worth it for now
 - using AVX for 4 pixels: 500 ms -> also not for now too constraining
 - some analytical instant returns and symmetry: 39 ms -> zoom meh
-- structure for DE with std_optional and tuple: 55 ms
-- structure for DE with std_optional and pair: 49 ms
-- structure for DE with double and pair: 41 ms ok
-- with not conservative DE: 32 ms -> loosing a bit at high zoom
