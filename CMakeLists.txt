@@ -8,7 +8,7 @@ find_package(SFML 3 REQUIRED COMPONENTS Graphics Window System)
 find_package(yaml-cpp REQUIRED)
 
 add_executable(fractal 
-    src/main_new.cpp
+    main.cpp
     src/ConfigLoader.cpp
     src/Mandelbrot.cpp
     src/EventHandler.cpp
