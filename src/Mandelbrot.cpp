@@ -32,11 +32,36 @@ void Mandelbrot::compute() {
         }
     }
 
+    // First pass: compute iteration counts and find min/max
+    std::vector<std::vector<int>> iterCounts(y_end - y_start, std::vector<int>(imageWidth));
+    int minIter = std::numeric_limits<int>::max();
+    int maxIter = 0;
     for (std::size_t y = y_start; y < y_end; y++) {
         for (std::size_t x = 0; x < imageWidth; x++) {
             double cx = left + static_cast<double>(x) * dx;
             double cy = top - static_cast<double>(y) * dy;
-            std::uint32_t color = computePoint(cx, cy);
+            int n = computePoint(cx, cy);
+            iterCounts[y - y_start][x] = n;
+            if (n > 0) {
+                if (n < minIter)
+                    minIter = n;
+                if (n > maxIter)
+                    maxIter = n;
+            }
+        }
+    }
+
+    // Second pass: map iteration counts to color using min/max
+    for (std::size_t y = y_start; y < y_end; y++) {
+        for (std::size_t x = 0; x < imageWidth; x++) {
+            int n = iterCounts[y - y_start][x];
+            std::uint32_t color = 0x000000;
+            if (n > 0 && maxIter > minIter) {
+                // Normalize n to [0, 1]
+                double t = (static_cast<double>(n) - minIter) / (maxIter - minIter);
+                unsigned char c = static_cast<unsigned char>(255 * t);
+                color = (c << 16) | (c << 8) | c;
+            }
             sf::Color sfColor((color >> 16) & 0xFF, // R
                               (color >> 8) & 0xFF,  // G
                               color & 0xFF,         // B
@@ -46,6 +71,7 @@ void Mandelbrot::compute() {
 
             // symmetry maybe
             if (useSymmetry) {
+                double cy = top - static_cast<double>(y) * dy;
                 double cy_mirror = -cy;
                 std::size_t mirror_y = static_cast<std::size_t>(std::round((top - cy_mirror) / dy));
                 if (mirror_y != y && mirror_y < imageHeight) {
@@ -58,28 +84,23 @@ void Mandelbrot::compute() {
     }
 }
 
-std::uint32_t Mandelbrot::computePoint(double cr, double ci) const {
-    // main cardioid: (q(q + (cr - 0.25)) < 0.25 * ci^2) where q = (cr - 0.25)^2 + ci^2
+// Returns iteration count, or -1 if inside set
+int Mandelbrot::computePoint(double cr, double ci) const {
     double crShifted = cr - 0.25;
     double q = crShifted * crShifted + ci * ci;
     if (q * (q + crShifted) < 0.25 * ci * ci) {
-        return 0x000000;
+        return -1;
     }
-
-    // period-2 bulb: (cr + 1)^2 + ci^2 < 0.0625 (radius 0.25 circle centered at (-1, 0))
     double crPlus1 = cr + 1.0;
     if (crPlus1 * crPlus1 + ci * ci < 0.0625) {
-        return 0x000000;
+        return -1;
     }
-
     const int maxIterations = 1000;
     double zr = 0.0, zi = 0.0;
     double zr2 = 0.0, zi2 = 0.0;
-
     double zrOld = 0.0, ziOld = 0.0;
     int checkPeriod = 20;
     int nextCheck = checkPeriod;
-
     int n = 0;
     while (zr2 + zi2 <= 4.0 && n < maxIterations) {
         zi = 2.0 * zr * zi + ci;
@@ -87,25 +108,21 @@ std::uint32_t Mandelbrot::computePoint(double cr, double ci) const {
         zr2 = zr * zr;
         zi2 = zi * zi;
         ++n;
-
-        // periodicty check
         if (n == nextCheck) {
             double diffR = zr - zrOld;
             double diffI = zi - ziOld;
             if (diffR * diffR + diffI * diffI < 1e-20) {
-                return 0x000000;
+                return -1;
             }
             zrOld = zr;
             ziOld = zi;
             nextCheck += checkPeriod;
-            checkPeriod *= 2; // exponential backoff
+            checkPeriod *= 2;
         }
     }
-
     if (n == maxIterations) {
-        return 0x000000;
+        return -1;
     } else {
-        unsigned char color = static_cast<unsigned char>(255 * n / maxIterations);
-        return (color << 16) | (color << 8) | color;
+        return n;
     }
 }

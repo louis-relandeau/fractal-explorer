@@ -14,8 +14,8 @@ public:
 
     virtual void compute() = 0;
 
-    /* Returns color of a single point */
-    virtual uint32_t computePoint(double x, double y) const = 0;
+    /* Returns iteration count of a single point, or -1 if inside set */
+    virtual int computePoint(double x, double y) const = 0;
 
     void backupAndReplacePointers(sf::Image *newImage, Viewport *newVp);
     void restoreBackedUpPointers();

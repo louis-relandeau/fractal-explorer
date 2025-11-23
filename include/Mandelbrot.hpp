@@ -10,5 +10,5 @@ public:
 
     void compute() override;
 
-    std::uint32_t computePoint(double cr, double ci) const override;
+    int computePoint(double cr, double ci) const override;
 };
