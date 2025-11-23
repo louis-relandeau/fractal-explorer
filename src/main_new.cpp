@@ -21,9 +21,9 @@ int main() {
 
     auto actualSize = window.getSize(); // i3 resizes
 
-    double initialWidth = 4.0;
+    double initialWidth = 3.0;
     double initialHeight = initialWidth * actualSize.y / double(actualSize.x);
-    Viewport viewport{0, 0, initialWidth, initialHeight};
+    Viewport viewport{-0.5, 0, initialWidth, initialHeight};
 
     sf::Image *image = new sf::Image(actualSize);
     sf::Texture texture(image->getSize());
