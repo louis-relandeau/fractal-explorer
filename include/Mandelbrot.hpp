@@ -1,6 +1,6 @@
 #pragma once
 
-#include <cstdint>
+#include <SFML/Graphics.hpp>
 
 #include <FractalBase.hpp>
 
@@ -10,5 +10,8 @@ public:
 
     void compute() override;
 
-    int computePoint(double cr, double ci) const override;
+    double computePoint(double cr, double ci) const override;
+
+private:
+    sf::Color mapToPalette(double t);
 };

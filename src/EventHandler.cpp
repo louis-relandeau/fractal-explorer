@@ -160,7 +160,13 @@ void EventHandler::handleSaveImageEvent() {
     timeFunction([&] { fractalPtr->compute(); });
     fractalPtr->restoreBackedUpPointers();
 
-    std::string filename = "images/fractal_" + formatChoice + ".png";
+    // Get current time for timestamp
+    auto t = std::time(nullptr);
+    std::tm tm;
+    localtime_r(&t, &tm);
+    char timestamp[32];
+    std::strftime(timestamp, sizeof(timestamp), "%Y%m%d_%H%M%S", &tm);
+    std::string filename = "images/fractal_" + formatChoice + "_" + timestamp + ".png";
     if (saveImage.saveToFile(filename)) {
         std::cout << "Image saved to " << filename << std::endl;
     } else {
