@@ -10,9 +10,23 @@
 #include <Timer.hpp>
 #include <Viewport.hpp>
 
+#include <unistd.h>
+#include <limits.h>
+#include <filesystem>
+#include <string>
+
+std::string getExecutableDir() {
+    char result[PATH_MAX];
+    ssize_t count = readlink("/proc/self/exe", result, PATH_MAX);
+    std::string exePath = std::string(result, (count > 0) ? count : 0);
+    return std::filesystem::path(exePath).parent_path().string();
+}
+
 int main() {
-    std::string rootPath = std::filesystem::current_path().string();
-    ConfigLoader config(rootPath + "/config.yaml");
+    std::string exeDir = getExecutableDir();
+    std::string rootPath = std::filesystem::path(exeDir).parent_path().string();
+    std::string configPath = rootPath + "/config.yaml";
+    ConfigLoader config(configPath);
 
     std::string windowTitle = "Fractal Explorer - " + config.fractalParams.name;
     sf::RenderWindow window(sf::VideoMode({config.windowParams.width, config.windowParams.height}),

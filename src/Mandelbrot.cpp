@@ -33,6 +33,7 @@ void Mandelbrot::compute() {
     double minIter = std::numeric_limits<double>::max();
     double maxIter = 0;
 
+#pragma omp parallel for collapse(2) reduction(min : minIter) reduction(max : maxIter)
     for (std::size_t y = 0; y < imageHeight; y++) {
         for (std::size_t x = 0; x < imageWidth; x++) {
             double n = -1.0;
@@ -43,8 +44,8 @@ void Mandelbrot::compute() {
                 double srcY = static_cast<double>(y) + offsetY;
                 if (srcX >= 0.0 && srcX < static_cast<double>(imageWidth) && srcY >= 0.0 &&
                     srcY < static_cast<double>(imageHeight)) {
-                    std::size_t srcXIdx = static_cast<std::size_t>(std::round(srcX));
-                    std::size_t srcYIdx = static_cast<std::size_t>(std::round(srcY));
+                    std::size_t srcXIdx = static_cast<std::size_t>(srcX + 0.5);
+                    std::size_t srcYIdx = static_cast<std::size_t>(srcY + 0.5);
                     if (prevIterCounts && srcYIdx < prevIterCounts->size() &&
                         srcXIdx < (*prevIterCounts)[srcYIdx].size()) {
                         n = (*prevIterCounts)[srcYIdx][srcXIdx];
@@ -73,12 +74,14 @@ void Mandelbrot::compute() {
     prevIterCounts = iterCounts;
     prevVp = *vp;
 
+    double logScale = 1.0 / std::log(maxIter - minIter + 1.0);
+
     for (std::size_t y = 0; y < imageHeight; y++) {
         for (std::size_t x = 0; x < imageWidth; x++) {
             double n = iterCounts[y][x];
             sf::Color sfColor(0, 0, 0, 255);
             if (n > 0.0 && maxIter > minIter) {
-                double t = std::log(n - minIter + 1.0) / std::log(maxIter - minIter + 1.0);
+                double t = std::log(n - minIter + 1.0) * logScale;
                 sfColor = mapToPalette(t);
             }
             image->setPixel({static_cast<unsigned int>(x), static_cast<unsigned int>(y)}, sfColor);

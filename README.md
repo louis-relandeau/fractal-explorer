@@ -1,6 +1,6 @@
 # Install
-EndeavourOS/Arch: `sudo pacman -S sfml`
-Ubuntu: `sudo apt install libsfml-dev`
+EndeavourOS/Arch: `sudo pacman -S sfml valgrind kcachegrind`
+Ubuntu: `sudo apt install libsfml-dev valgrind kcachegrind`
 
 # TODOs
 
