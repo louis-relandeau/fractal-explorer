@@ -3,7 +3,9 @@
 #include <SFML/Graphics.hpp>
 
 #include <Viewport.hpp>
+
 #include <cstdint>
+#include <optional>
 #include <string>
 #include <vector>
 
@@ -27,5 +29,6 @@ protected:
     Viewport *backupVp = nullptr;
 
     /* previous iter counts for potential re-use */
-    std::vector<std::vector<double>> backupIterCounts;
+    std::optional<std::vector<std::vector<double>>> prevIterCounts;
+    std::optional<Viewport> prevVp;
 };

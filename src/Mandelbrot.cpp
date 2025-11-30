@@ -3,6 +3,7 @@
 #include <array>
 #include <cmath>
 #include <cstdint>
+#include <iostream>
 
 void Mandelbrot::compute() {
     auto size = image->getSize();
@@ -15,11 +16,11 @@ void Mandelbrot::compute() {
     bool useOverlapOptimization = false;
     double offsetX = 0.0;
     double offsetY = 0.0;
-    if (backupVp) {
-        if (std::abs(vp->width - backupVp->width) < 1e-12 &&
-            std::abs(vp->height - backupVp->height) < 1e-12) {
-            offsetX = (backupVp->centerX - vp->centerX) / dx;
-            offsetY = (backupVp->centerY - vp->centerY) / dy;
+    if (prevVp) {
+        if (std::abs(vp->width - prevVp->width) < 1e-12 &&
+            std::abs(vp->height - prevVp->height) < 1e-12) {
+            offsetX = (prevVp->centerX - vp->centerX) / dx;
+            offsetY = (prevVp->centerY - vp->centerY) / dy;
             useOverlapOptimization = true;
         }
     }
@@ -27,52 +28,26 @@ void Mandelbrot::compute() {
     double left = vp->centerX - vp->width * 0.5;
     double top = vp->centerY + vp->height * 0.5;
 
-    // x axis visible for symmetry?
-    double yAxisPos = top / dy;
-    bool useSymmetry = (yAxisPos >= 0.0 && yAxisPos < static_cast<double>(imageHeight));
-
-    std::size_t y_start = 0, y_end = imageHeight;
-    if (useSymmetry) {
-        std::size_t axis_row = static_cast<std::size_t>(std::round(yAxisPos));
-        std::size_t rows_above = axis_row + 1;
-        std::size_t rows_below = imageHeight - axis_row - 1;
-        if (rows_above >= rows_below) {
-            y_start = 0;
-            y_end = axis_row + 1;
-        } else {
-            y_start = axis_row;
-            y_end = imageHeight;
-        }
-    }
-
-    // Use a marker value that's impossible (-1) for "not computed"
     std::vector<std::vector<double>> iterCounts(imageHeight, std::vector<double>(imageWidth, -1.0));
-    
-    // Track what we've computed to avoid redundant work
-    std::vector<std::vector<bool>> computed(imageHeight, std::vector<bool>(imageWidth, false));
-    
+
     double minIter = std::numeric_limits<double>::max();
     double maxIter = 0;
-    
-    // Compute only the required half
-    for (std::size_t y = y_start; y < y_end; y++) {
+
+    for (std::size_t y = 0; y < imageHeight; y++) {
         for (std::size_t x = 0; x < imageWidth; x++) {
-            if (computed[y][x]) continue;  // Already handled via mirroring
-            
             double n = -1.0;
             bool reused = false;
-            
+
             if (useOverlapOptimization) {
-                double srcX = static_cast<double>(x) + offsetX;
+                double srcX = static_cast<double>(x) - offsetX;
                 double srcY = static_cast<double>(y) + offsetY;
-                if (srcX >= 0.0 && srcX < static_cast<double>(imageWidth) && 
-                    srcY >= 0.0 && srcY < static_cast<double>(imageHeight)) {
+                if (srcX >= 0.0 && srcX < static_cast<double>(imageWidth) && srcY >= 0.0 &&
+                    srcY < static_cast<double>(imageHeight)) {
                     std::size_t srcXIdx = static_cast<std::size_t>(std::round(srcX));
                     std::size_t srcYIdx = static_cast<std::size_t>(std::round(srcY));
-                    if (srcYIdx < backupIterCounts.size() && 
-                        srcXIdx < backupIterCounts[srcYIdx].size() &&
-                        backupIterCounts[srcYIdx][srcXIdx] >= 0.0) {  // Valid data
-                        n = backupIterCounts[srcYIdx][srcXIdx];
+                    if (prevIterCounts && srcYIdx < prevIterCounts->size() &&
+                        srcXIdx < (*prevIterCounts)[srcYIdx].size()) {
+                        n = (*prevIterCounts)[srcYIdx][srcXIdx];
                         reused = true;
                     }
                 }
@@ -83,21 +58,9 @@ void Mandelbrot::compute() {
                 double cy = top - static_cast<double>(y) * dy;
                 n = computePoint(cx, cy);
             }
-            
+
             iterCounts[y][x] = n;
-            computed[y][x] = true;
-            
-            // IMMEDIATELY mirror it in iterCounts
-            if (useSymmetry) {
-                double cy = top - static_cast<double>(y) * dy;
-                double cy_mirror = -cy;
-                std::size_t mirror_y = static_cast<std::size_t>(std::round((top - cy_mirror) / dy));
-                if (mirror_y != y && mirror_y < imageHeight) {
-                    iterCounts[mirror_y][x] = n;
-                    computed[mirror_y][x] = true;
-                }
-            }
-            
+
             if (n > 0) {
                 if (n < minIter)
                     minIter = n;
@@ -107,23 +70,9 @@ void Mandelbrot::compute() {
         }
     }
 
-    // Verify iterCounts is complete - any -1.0 values means something went wrong
-    for (std::size_t y = 0; y < imageHeight; y++) {
-        for (std::size_t x = 0; x < imageWidth; x++) {
-            if (iterCounts[y][x] < 0.0) {
-                // This should never happen - compute it now as fallback
-                double cx = left + static_cast<double>(x) * dx;
-                double cy = top - static_cast<double>(y) * dy;
-                iterCounts[y][x] = computePoint(cx, cy);
-            }
-        }
-    }
+    prevIterCounts = iterCounts;
+    prevVp = *vp;
 
-    // Save complete backup
-    backupIterCounts = iterCounts;
-    backupVp = vp;
-
-    // Color ALL pixels
     for (std::size_t y = 0; y < imageHeight; y++) {
         for (std::size_t x = 0; x < imageWidth; x++) {
             double n = iterCounts[y][x];
