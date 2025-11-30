@@ -6,7 +6,7 @@
 
 class Mandelbrot : public FractalBase {
 public:
-    Mandelbrot(sf::Image *image, Viewport *vp) : FractalBase(image, vp) {}
+    Mandelbrot(sf::Image *image, Viewport *vp);
 
     void compute() override;
 
@@ -14,4 +14,12 @@ public:
 
 private:
     sf::Color mapToPalette(double t);
+
+    void initPaletteCache();
+    sf::Color getPaletteColor(double t) const;
+
+    const int maxIterations;
+    std::vector<sf::Color> colorPalette;
+    std::vector<sf::Color> paletteCache;
+    static constexpr int PALETTE_CACHE_SIZE = 4096;
 };
