@@ -21,5 +21,5 @@ target_link_libraries(fractal PRIVATE
     SFML::Graphics
     SFML::Window
     SFML::System
-    yaml-cpp
+    yaml-cpp::yaml-cpp
 )

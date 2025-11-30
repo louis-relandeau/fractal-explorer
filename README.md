@@ -1,3 +1,7 @@
+# Install
+EndeavourOS/Arch: `sudo pacman -S sfml`
+Ubuntu: `sudo apt install libsfml-dev`
+
 # TODOs
 
 * change the color palette

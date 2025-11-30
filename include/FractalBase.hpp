@@ -14,7 +14,7 @@ public:
 
     virtual void compute() = 0;
 
-    /* Returns iteration count of a single point, or -1 if inside set */
+    /* returns iteration count of a single point, or -1 if inside set */
     virtual double computePoint(double x, double y) const = 0;
 
     void backupAndReplacePointers(sf::Image *newImage, Viewport *newVp);
@@ -23,6 +23,9 @@ public:
 protected:
     sf::Image *image;
     Viewport *vp;
-    sf::Image *backupImage;
-    Viewport *backupVp;
+    sf::Image *backupImage = nullptr;
+    Viewport *backupVp = nullptr;
+
+    /* previous iter counts for potential re-use */
+    std::vector<std::vector<double>> backupIterCounts;
 };

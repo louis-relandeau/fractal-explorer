@@ -12,16 +12,27 @@ void Mandelbrot::compute() {
     double dx = vp->width / static_cast<double>(imageWidth);
     double dy = vp->height / static_cast<double>(imageHeight);
 
+    bool useOverlapOptimization = false;
+    double offsetX = 0.0;
+    double offsetY = 0.0;
+    if (backupVp) {
+        if (std::abs(vp->width - backupVp->width) < 1e-12 &&
+            std::abs(vp->height - backupVp->height) < 1e-12) {
+            offsetX = (backupVp->centerX - vp->centerX) / dx;
+            offsetY = (backupVp->centerY - vp->centerY) / dy;
+            useOverlapOptimization = true;
+        }
+    }
+
     double left = vp->centerX - vp->width * 0.5;
     double top = vp->centerY + vp->height * 0.5;
 
     // x axis visible for symmetry?
-    double yAxisPos = top / dy; // pixel row where cy = 0
+    double yAxisPos = top / dy;
     bool useSymmetry = (yAxisPos >= 0.0 && yAxisPos < static_cast<double>(imageHeight));
 
     std::size_t y_start = 0, y_end = imageHeight;
     if (useSymmetry) {
-        // compute the larger half
         std::size_t axis_row = static_cast<std::size_t>(std::round(yAxisPos));
         std::size_t rows_above = axis_row + 1;
         std::size_t rows_below = imageHeight - axis_row - 1;
@@ -34,15 +45,59 @@ void Mandelbrot::compute() {
         }
     }
 
-    std::vector<std::vector<double>> iterCounts(y_end - y_start, std::vector<double>(imageWidth));
+    // Use a marker value that's impossible (-1) for "not computed"
+    std::vector<std::vector<double>> iterCounts(imageHeight, std::vector<double>(imageWidth, -1.0));
+    
+    // Track what we've computed to avoid redundant work
+    std::vector<std::vector<bool>> computed(imageHeight, std::vector<bool>(imageWidth, false));
+    
     double minIter = std::numeric_limits<double>::max();
     double maxIter = 0;
+    
+    // Compute only the required half
     for (std::size_t y = y_start; y < y_end; y++) {
         for (std::size_t x = 0; x < imageWidth; x++) {
-            double cx = left + static_cast<double>(x) * dx;
-            double cy = top - static_cast<double>(y) * dy;
-            double n = computePoint(cx, cy);
-            iterCounts[y - y_start][x] = n;
+            if (computed[y][x]) continue;  // Already handled via mirroring
+            
+            double n = -1.0;
+            bool reused = false;
+            
+            if (useOverlapOptimization) {
+                double srcX = static_cast<double>(x) + offsetX;
+                double srcY = static_cast<double>(y) + offsetY;
+                if (srcX >= 0.0 && srcX < static_cast<double>(imageWidth) && 
+                    srcY >= 0.0 && srcY < static_cast<double>(imageHeight)) {
+                    std::size_t srcXIdx = static_cast<std::size_t>(std::round(srcX));
+                    std::size_t srcYIdx = static_cast<std::size_t>(std::round(srcY));
+                    if (srcYIdx < backupIterCounts.size() && 
+                        srcXIdx < backupIterCounts[srcYIdx].size() &&
+                        backupIterCounts[srcYIdx][srcXIdx] >= 0.0) {  // Valid data
+                        n = backupIterCounts[srcYIdx][srcXIdx];
+                        reused = true;
+                    }
+                }
+            }
+
+            if (!reused) {
+                double cx = left + static_cast<double>(x) * dx;
+                double cy = top - static_cast<double>(y) * dy;
+                n = computePoint(cx, cy);
+            }
+            
+            iterCounts[y][x] = n;
+            computed[y][x] = true;
+            
+            // IMMEDIATELY mirror it in iterCounts
+            if (useSymmetry) {
+                double cy = top - static_cast<double>(y) * dy;
+                double cy_mirror = -cy;
+                std::size_t mirror_y = static_cast<std::size_t>(std::round((top - cy_mirror) / dy));
+                if (mirror_y != y && mirror_y < imageHeight) {
+                    iterCounts[mirror_y][x] = n;
+                    computed[mirror_y][x] = true;
+                }
+            }
+            
             if (n > 0) {
                 if (n < minIter)
                     minIter = n;
@@ -52,53 +107,32 @@ void Mandelbrot::compute() {
         }
     }
 
-    // const int HISTOGRAM_BINS = 1000;
-    // std::vector<int> histogram(HISTOGRAM_BINS, 0);
-    // int totalPoints = 0;
-
-    // for (std::size_t y = y_start; y < y_end; y++) {
-    //     for (std::size_t x = 0; x < imageWidth; x++) {
-    //         double n = iterCounts[y - y_start][x];
-    //         if (n > 0.0) {
-    //             // Map to bin using LOG scale for histogram
-    //             double logValue = std::log(n - minIter + 1.0) / std::log(maxIter - minIter + 1.0);
-    //             int bin = static_cast<int>(logValue * (HISTOGRAM_BINS - 1));
-    //             bin = std::max(0, std::min(HISTOGRAM_BINS - 1, bin));
-    //             histogram[bin]++;
-    //             totalPoints++;
-    //         }
-    //     }
-    // }
-
-    // std::vector<double> cumulative(HISTOGRAM_BINS, 0.0);
-    // int sum = 0;
-    // for (int i = 0; i < HISTOGRAM_BINS; i++) {
-    //     sum += histogram[i];
-    //     cumulative[i] = static_cast<double>(sum) / totalPoints;
-    // }
-
-    for (std::size_t y = y_start; y < y_end; y++) {
+    // Verify iterCounts is complete - any -1.0 values means something went wrong
+    for (std::size_t y = 0; y < imageHeight; y++) {
         for (std::size_t x = 0; x < imageWidth; x++) {
-            double n = iterCounts[y - y_start][x]; // ← DOUBLE not int!
+            if (iterCounts[y][x] < 0.0) {
+                // This should never happen - compute it now as fallback
+                double cx = left + static_cast<double>(x) * dx;
+                double cy = top - static_cast<double>(y) * dy;
+                iterCounts[y][x] = computePoint(cx, cy);
+            }
+        }
+    }
+
+    // Save complete backup
+    backupIterCounts = iterCounts;
+    backupVp = vp;
+
+    // Color ALL pixels
+    for (std::size_t y = 0; y < imageHeight; y++) {
+        for (std::size_t x = 0; x < imageWidth; x++) {
+            double n = iterCounts[y][x];
             sf::Color sfColor(0, 0, 0, 255);
             if (n > 0.0 && maxIter > minIter) {
-                // Simple log mapping
                 double t = std::log(n - minIter + 1.0) / std::log(maxIter - minIter + 1.0);
                 sfColor = mapToPalette(t);
             }
             image->setPixel({static_cast<unsigned int>(x), static_cast<unsigned int>(y)}, sfColor);
-
-            // symmetry maybe
-            if (useSymmetry) {
-                double cy = top - static_cast<double>(y) * dy;
-                double cy_mirror = -cy;
-                std::size_t mirror_y = static_cast<std::size_t>(std::round((top - cy_mirror) / dy));
-                if (mirror_y != y && mirror_y < imageHeight) {
-                    image->setPixel(
-                        {static_cast<unsigned int>(x), static_cast<unsigned int>(mirror_y)},
-                        sfColor);
-                }
-            }
         }
     }
 }
