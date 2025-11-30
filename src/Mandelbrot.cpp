@@ -60,12 +60,13 @@ void Mandelbrot::compute() {
                 double srcX = static_cast<double>(x) - offsetX;
                 double srcY = static_cast<double>(y) + offsetY;
 
-                if (srcX >= 0.0 && srcX < static_cast<double>(imageWidth) && srcY >= 0.0 &&
-                    srcY < static_cast<double>(imageHeight)) {
+                int srcXi = static_cast<int>(srcX + 0.5);
+                int srcYi = static_cast<int>(srcY + 0.5);
 
-                    std::size_t srcIdx = static_cast<std::size_t>(srcY + 0.5) * imageWidth +
-                                         static_cast<std::size_t>(srcX + 0.5);
-
+                if (srcXi >= 0 && srcXi < static_cast<int>(imageWidth) && srcYi >= 0 &&
+                    srcYi < static_cast<int>(imageHeight)) {
+                    std::size_t srcIdx = static_cast<std::size_t>(srcYi) * imageWidth +
+                                         static_cast<std::size_t>(srcXi);
                     if (srcIdx < prevIterCounts.size()) {
                         n = prevIterCounts[srcIdx];
                         reused = true;

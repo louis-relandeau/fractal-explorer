@@ -188,6 +188,8 @@ void EventHandler::applyZoomAtMouse(double zoomFactor) {
     viewport->centerY = my + (mouse.y - winSize.y / 2.0) * (viewport->height / winSize.y);
 
     needsRedraw = true;
+
+    std::cout << "Zoom level: " << (4.0 / viewport->width) << "x" << std::endl;
 }
 
 void EventHandler::updateViewportAndRedraw() {
